@@ -747,3 +747,97 @@ responsabilidad del componente de esquina alta (turnout+share) minoritario. Vali
 inyectando fraude extremo (turnout 99%, share 90%) en 5% de las parroquias:
 **AUC = 1,000 (2025)** y **0,998 (2021)**. Es una aproximación práctica (el modelo exacto
 de Mebane está en el paquete R `eforensics`).
+
+---
+
+## 15. Frentes A–E: nuevas piezas (2026-10-14)
+
+Se completaron piezas transversales de los cinco frentes.
+
+### 15.1 Frente A — familias y candidaturas
+- `datos/familias.py` es la **fuente única** lista → FAMILIA (antes duplicada en
+  `modelo/bloques.py` y `backtest/bloques_familia.py`). Normaliza los tres formatos del
+  CNE (`"5"`, `"005"`, `"018004035"` concatenada, `"21-100"` alianza) y **lee de vuelta**
+  la hoja `Mapa_familias` del XLSX curado por el experto (overrides con caché por mtime).
+  Añade las listas 2026 (ADN 7, Futuro/DSI 20, etc.).
+- `datos/candidatos.py` — roster de candidaturas por año/dignidad con su familia
+  (derivado de las bases tidy 2023) y `cargar_2026()`, que normaliza la lista definitiva
+  del CNE (publicación **9-nov-2026**) con columnas flexibles → esquema estable.
+
+### 15.2 Frente B — instantáneas por mesa
+- `vivo/instantaneas.py` — normaliza cualquier fuente (histórico, volcado CNE `.txt`,
+  respuesta cruda del API o **replay**) al **mismo esquema tidy por mesa** del histórico
+  (`mesa_id, loc_id, cod_junta, cod_candidato, lista, familia, votos` + totales).
+  Incluye `serie_replay()` (órdenes aleatorio/directo/inverso) para probar el pipeline
+  completo sin datos en vivo y `progreso()` para la serie `% actas`.
+
+### 15.3 Frente C — motor de proyección y dashboard
+- `modelo/proyectar.py` — motor en vivo: proyecta por **familias** a nivel parroquia
+  (método **v1** relleno jerárquico parroquia→cantón→provincia→nación; alternativa
+  `jerarquico` de Schteingart), agrega a provincia (prefecto) y cantón (alcalde) y emite
+  el **contrato `datos_web.json`** del dashboard. La referencia es 2023 por familia.
+- `web/index.html` + `web/config.js` — dashboard estático (Chart.js + Leaflet opcional
+  con `provincias.geojson`): pestañas **Prefecturas** (tarjetas + barras + mapa),
+  **Detalle** (evolución proyectado vs crudo) y **Alcaldías** por provincia.
+  Probado con un **replay** de 2023 (35% escrutado → 23 provincias, 221 cantones;
+  la proyección nacional converge a la share final al 100%).
+
+### 15.4 Frente D — ranking forense
+- `forense/ranking.py` — combina las señales por mesa de `forense/juntas.py` en
+  **p-valores** de una cola, los une con el método de **Simes** y controla FDR con
+  **Benjamini–Hochberg**; produce un ranking con prioridad Alta/Media/Baja y el desglose
+  de prioridad alta por provincia. Descarta mesas con <20 votantes (evita z de share
+  inflado por denominadores diminutos). En prefecto 2023: 200 mesas Alta, 379 con q<0.05.
+
+### 15.5 Frente E — inferencia ecológica local
+- `inferencia/local.py` — matriz de transición de voto **entre familias** (EM +
+  bootstrap) a nivel parroquia para **prefecto** y **alcalde** 2019→2023, **incluyendo
+  No voto** (electores del registro − sufragantes por parroquia). Ejemplos: RC→RC 79%
+  (prefecto), RC→RC 80% (alcalde); PSC→PSC 52%/41%; el No voto es mayormente leal
+  (NOV→NOV 71%/79%). Salidas: CSV de `theta`, IC bootstrap, heatmap y resumen JSON.
+
+## 16. Dashboard modular, mapas y ciclo en vivo (2026-10-14)
+
+### 16.1 Configuración de la elección (modular)
+`config_eleccion.py` concentra la elección objetivo (2026), la **referencia** (2023),
+las dignidades, el **método** y la **fuente** (`replay`/`azure`/`portal`). Nada está
+hardcodeado a 2026 en el resto del código: cambiar de elección (o probar con 2023) es
+cambiar estos valores o pasarlos por CLI.
+
+### 16.2 Dashboard (`web/`)
+`web/index.html` (+ `web/config.js`) lee `datos_web.json` y dibuja **todo** desde el
+JSON (elección, año, referencia, método, % escrutado). Tres pestañas: **Prefecturas**
+(tarjetas + barras + **mapa de provincias**), **Detalle** (evolución nacional
+proyectado vs crudo + tabla) y **Alcaldías** (selector de provincia + **mapa de
+cantones** + tarjetas). Mapas con **Leaflet** y GeoJSON **local** (sin dependencia de
+tiles propios).
+Para verlo en prueba con **2023**:
+
+```
+python -m vivo.ciclo --fuente replay --anio 2023 --referencia 2019 --fraccion 0.30
+python -m http.server 8000 --directory web     # abrir http://localhost:8000
+```
+
+### 16.3 GeoJSON con códigos del CNE (`datos/geo.py`)
+Fuente: servicio ArcGIS del **INEC** (Provincias/Cantones del Ecuador, DPA), salida
+GeoJSON WGS84; se **simplifica** con shapely (de 20/43 MB a **175/812 KB**). Salida:
+`web/provincias.geojson` (`cod` 2 díg = DPA = CNE) y `web/cantones.geojson`
+(`cod` = CNE por **cruce de nombre+provincia**, 220/224; los 4 sin código son cantones
+nuevos que no están en el catálogo 2023). Créditos de la fuente: INEC / ArcGIS;
+alternativa abierta: `pabl-o-ce/Ecuador-geoJSON` (MIT).
+
+### 16.4 Azure Files rápido y robusto (`vivo/azure.py`)
+Reescrito para tiempo real: **REST directo con SAS** (sin SDK), `requests.Session` con
+**pool + descargas en paralelo** (hilos, `--workers`), **incremental** por ETag/tamaño
+(con `If-None-Match`→304 y MD5 de respaldo), **reintentos** con backoff exponencial +
+jitter y `Retry-After`, timeouts de conexión/lectura, descarga a `.part` **reanudable**
+con `Range` y `os.replace` atómico, y registro `(ruta, capturado_en, etag, bytes, md5,
+ms)`. `--patron`/`--profundidad` acotan el espejo. El listado XML (recursivo, tolerante
+a namespaces) se verificó con respuestas sintéticas.
+
+### 16.5 Ciclo en vivo (`vivo/ciclo.py`)
+Une **captura → instantánea → proyección → publicación** en un comando, con
+`--fuente replay|azure|portal`, `--loop/--intervalo`, y publicación a la rama `data`
+por git o HTTP (reusa `publicar_rodri`). Probado end-to-end con `replay`
+(`--anio 2023 --referencia 2019 --fraccion 0.30`): 23 provincias y 221 cantones,
+proyección nacional que converge al final.

@@ -16,6 +16,8 @@ DATOS*.zip
 datos_web.json
 datos_proyeccion_*.json
 *.xlsx
+# excepción: el snapshot que sirve GitHub Pages SÍ se versiona (demo/simulación)
+!web/datos_web.json
 
 # Directorios de datos/artefactos
 backtest_snapshots/

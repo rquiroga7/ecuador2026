@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 import rutas_datos as rd
-from backtest.bloques_familia import FAMILIA
+from datos.familias import FAMILIA, VOCAB, overrides_efectivos
 
 # Organizaciones nacionales 2026 (número de lista -> nombre), de fuentes CNE/prensa.
 NOMBRE_2026 = {
@@ -47,8 +47,7 @@ CORREISMO_2026 = {
     "33": "RETO — en conversaciones",
 }
 
-VOCAB = ["RC", "PSC", "MUPP", "CREO", "SUMA", "ID", "UP", "PSP", "CD", "Avanza",
-         "PSE", "DSI", "MOVER", "CONSTRUYE", "PID", "AMIGO", "ADN", "LOCAL", "OTRO"]
+# (Vocabulario importado de `datos.familias`: fuente única.)
 
 
 def _lineas_instructivo():
@@ -168,8 +167,10 @@ def main():
     df["nombre_2023"] = df["lista"].map(n23_p).fillna(df["lista"].map(n23_a))
     df["nombre_2026"] = df["lista"].map(NOMBRE_2026)
     df["correismo_2026"] = df["lista"].map(CORREISMO_2026).fillna("")
+    ov = overrides_efectivos()                  # ediciones previas del XLSX, si las hay
     df["familia_sugerida"] = df["lista"].map(FAMILIA).fillna("")
-    df["familia"] = df["familia_sugerida"]      # editable (arranca con la sugerencia)
+    # editable: arranca con la edición previa del experto si existe, si no la sugerencia
+    df["familia"] = [ov.get(l) or FAMILIA.get(l, "") for l in df["lista"]]
     df["notas"] = ""
     df["pref_2019"] = df["lista"].map(vp19).fillna(0).astype(int)
     df["alc_2019"] = df["lista"].map(va19).fillna(0).astype(int)

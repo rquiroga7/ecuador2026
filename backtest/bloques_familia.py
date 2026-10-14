@@ -23,21 +23,16 @@ import pandas as pd
 import rutas_datos as rd
 from proyeccion import Proyector
 from modelo import swing, v1_brasil
+from datos import familias as fam_mod
 from backtest.bloques_lista import cargar, ordenes, UMBRALES
 
-FAMILIA = {
-    "5": "RC", "33": "RETO", "72": "RC", "6": "PSC", "18": "MUPP", "21": "CREO",
-    "23": "SUMA", "12": "ID", "2": "UP", "3": "PSP", "1": "CD", "8": "Avanza",
-    "17": "PSE", "20": "DSI", "35": "MOVER", "25": "CONSTRUYE", "4": "PID",
-    "16": "AMIGO",
-}
+# Fuente única de homologación (incluye overrides del XLSX del experto).
+FAMILIA = fam_mod.FAMILIA
 METODOS = ["jerarquico", "v2_nacional", "v4_territorio", "v1_brasil"]
 
 
 def a_familias(g):
-    out = g.copy()
-    out.columns = [FAMILIA.get(str(c), "LOCAL") for c in g.columns]
-    return out.T.groupby(level=0).sum().T
+    return fam_mod.a_familias(g)
 
 
 def _top2(M):

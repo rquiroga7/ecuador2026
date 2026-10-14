@@ -27,16 +27,12 @@ import re
 import pandas as pd
 
 import rutas_datos as rd
+from datos import familias
 
 LISTA_RE = re.compile(r"\d{3}")
 
-# Etiqueta legible por lista (editable; los nombres completos salen de los datos).
-FAMILIA = {
-    "005": "RC", "033": "RETO", "006": "PSC", "018": "MUPP", "021": "CREO",
-    "023": "SUMA", "001": "CD", "002": "UP", "003": "PSP", "004": "PID",
-    "008": "Avanza", "012": "ID", "016": "AMIGO", "017": "PSE", "020": "DSí",
-    "025": "Construye", "035": "MOVER", "072": "Sí Podemos", "100": "SUR",
-}
+# Etiqueta legible por lista (fuente única: `datos/familias.py`).
+FAMILIA = familias.FAMILIA
 
 
 def parsear_lista(s):
@@ -75,7 +71,8 @@ def construir(votos, etiquetas=True):
         partido_modal=("partido", lambda s: s.mode().iloc[0] if len(s.mode()) else ""),
     ).reset_index()
     if etiquetas:
-        tb["etiqueta"] = tb["bloque"].map(FAMILIA).fillna(tb["partido_modal"].str[:22])
+        etq = tb["bloque"].map(lambda b: familias.familia(b))
+        tb["etiqueta"] = etq.where(etq != "LOCAL", tb["partido_modal"].str[:22])
     tb = tb.sort_values("votos", ascending=False).reset_index(drop=True)
     return v, tb
 

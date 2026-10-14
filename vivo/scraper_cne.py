@@ -124,7 +124,7 @@ def barrido(host, patron, dignidades, provincias, token=None, intervalo=30.0,
                 time.sleep(pausa)
         print(f"[{datetime.now():%H:%M:%S}] capturas ok={n_ok}/{len(dignidades)*len(provincias)}")
         if una_pasada:
-            break
+            return destino
         time.sleep(intervalo)
 
 

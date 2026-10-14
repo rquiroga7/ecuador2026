@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seccionales Ecuador 2026 — Proyección en vivo</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg:#fafafa; --card:#fff; --line:#e3e3e3; --muted:#6b7280; --accent:#26418a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111417; --card:#1b1f24; --line:#2c333b; --muted:#9aa4b2; --accent:#7ea0ff; }
+  }
+  * { box-sizing:border-box; }
+  body { font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+         margin:0; padding:1.2rem; max-width:1180px; margin-inline:auto;
+         background:var(--bg); color:inherit; }
+  h1 { font-size:1.4rem; margin:0 0 .15rem; }
+  h2 { font-size:1rem; margin:0 0 .6rem; }
+  .sub { color:var(--muted); font-size:.85rem; margin-bottom:1rem; }
+  .tabs { display:flex; gap:.4rem; border-bottom:1px solid var(--line); margin-bottom:1rem;
+          flex-wrap:wrap; }
+  .tabs button { border:0; background:transparent; padding:.5rem .9rem; cursor:pointer;
+                 color:var(--muted); font-size:.92rem; border-bottom:2px solid transparent; }
+  .tabs button.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+  .hidden { display:none !important; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+          gap:.8rem; margin-bottom:1rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
+          padding:.85rem 1rem; }
+  .card h3 { font-size:.74rem; text-transform:uppercase; letter-spacing:.05em;
+             color:var(--muted); margin:0 0 .3rem; font-weight:600; }
+  .val { font-size:1.35rem; font-weight:700; line-height:1.15; }
+  .small { color:var(--muted); font-size:.8rem; }
+  .pill { display:inline-block; font-size:.72rem; padding:.15rem .55rem; border-radius:999px;
+          background:#e8eefc; color:var(--accent); }
+  .warn { background:#ffe8cc; color:#7a3b00; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px;
+           padding:.9rem 1rem; margin-bottom:1rem; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin-bottom:.6rem; }
+  select,input { padding:.35rem .5rem; border:1px solid var(--line); border-radius:8px;
+                 background:var(--card); color:inherit; font-size:.85rem; }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  th,td { text-align:left; padding:.4rem .5rem; border-bottom:1px solid var(--line);
+          white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; }
+  td.num,th.num { text-align:right; }
+  .bar { display:flex; height:12px; width:100%; min-width:120px; border-radius:6px;
+         overflow:hidden; background:var(--line); }
+  .bar span { height:100%; }
+  .barlbl { font-size:.72rem; color:var(--muted); }
+  .prov { display:flex; flex-direction:column; gap:.35rem; }
+  .prov .gan { font-size:1.15rem; font-weight:700; }
+  canvas { max-height:320px; }
+  #mapa { height:520px; border-radius:12px; }
+  footer { color:var(--muted); font-size:.78rem; margin-top:1rem; }
+  code { background:rgba(127,127,127,.15); padding:.1rem .3rem; border-radius:4px; }
+  .cands { display:flex; flex-wrap:wrap; gap:.35rem; }
+  .cand { font-size:.75rem; padding:.1rem .45rem; border-radius:6px; color:#fff; }
+  .banner { background:#ffe8cc; color:#7a3b00; padding:.55rem .8rem; border-radius:8px;
+            margin-bottom:1rem; font-size:.85rem; }
+</style>
+</head>
+<body>
+  <h1>Seccionales Ecuador 2026 — Proyección desde el escrutinio</h1>
+  <div class="sub">
+    <span id="titulo_eleccion">Seccionales Ecuador</span> ·
+    <span id="actualizado">cargando…</span>
+    <span class="pill" id="metodo">método –</span>
+    <span class="pill" id="escrutado_pill">escrutado –</span>
+    <span class="pill" id="referencia_pill">ref. –</span>
+  </div>
+  <div id="banner" class="banner hidden"></div>
+
+  <div class="tabs">
+    <button data-tab="pref" class="active">Prefecturas</button>
+    <button data-tab="det">Detalle de prefectura</button>
+    <button data-tab="alc">Alcaldías</button>
+  </div>
+
+  <!-- ============ TAB 1: PREFECTURAS ============ -->
+  <section id="tab-pref">
+    <div class="grid" id="resumen"></div>
+
+    <div class="panel">
+      <h2>Proyección nacional (prefecto)</h2>
+      <canvas id="chart_nac"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="toolbar">
+        <h2 style="margin:0">Prefecturas (proyectado)</h2>
+        <input id="busca_pref" placeholder="Buscar provincia…" style="max-width:180px">
+        <select id="orden_pref">
+          <option value="electores">Ordenar: electores</option>
+          <option value="margen">Ordenar: margen</option>
+          <option value="escrutado">Ordenar: % escrutado</option>
+          <option value="nombre">Ordenar: nombre</option>
+        </select>
+      </div>
+      <div class="grid" id="cards_pref"></div>
+    </div>
+
+    <div class="panel">
+      <div class="toolbar"><h2 style="margin:0">Mapa de provincias</h2>
+        <span class="small" id="mapa_msg"></span></div>
+      <div id="mapa"></div>
+    </div>
+  </section>
+
+  <!-- ============ TAB 2: DETALLE ============ -->
+  <section id="tab-det" class="hidden">
+    <div class="toolbar">
+      <label>Provincia: <select id="sel_prov"></select></label>
+    </div>
+    <div class="grid" id="det_resumen"></div>
+    <div class="panel">
+      <h2>Evolución nacional del escrutinio <span class="small" id="det_nota"></span></h2>
+      <canvas id="chart_det"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Estado actual</h2>
+      <table><thead><tr>
+        <th>Familia</th><th class="num">% crudo</th><th class="num">votos crudo</th>
+        <th class="num">% proyectado</th><th class="num">votos proy</th></tr></thead>
+        <tbody id="det_tabla"></tbody></table>
+    </div>
+  </section>
+
+  <!-- ============ TAB 3: ALCALDÍAS ============ -->
+  <section id="tab-alc" class="hidden">
+    <div class="toolbar">
+      <label>Provincia: <select id="sel_prov_alc"></select></label>
+      <input id="busca_alc" placeholder="Buscar cantón…" style="max-width:180px">
+      <span class="small" id="mapa_alc_msg"></span>
+    </div>
+    <div id="mapa_alc" style="height:420px;border-radius:12px;margin-bottom:1rem"></div>
+    <div class="grid" id="cards_alc"></div>
+  </section>
+
+  <footer>
+    Proyección no oficial con fines de análisis · método <b>v1</b> (relleno jerárquico
+    parroquia → cantón → provincia → nación) sobre <b>familias</b> de partidos; el
+    conteo crudo se publica sin proyección. Fuente: CNE. Datos y método en
+    <code>docs/</code>. El tablero es genérico: lee <code>datos_web.json</code>.
+  </footer>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const DATOS_URL = window.DATOS_URL || "datos_web.json";
+const $ = (id) => document.getElementById(id);
+const fmtPct = (v) => (v == null ? "–" : Number(v).toFixed(2) + "%");
+const fmtNum = (v) => (v == null ? "–" : Number(v).toLocaleString("es"));
+
+const FAM_COLOR = {
+  RC:"#d6336c", ADN:"#1c7ed6", PSC:"#f08c00", MUPP:"#2f9e44", CREO:"#7048e8",
+  SUMA:"#0ca678", ID:"#e8590c", UP:"#5f3dc4", PSP:"#c2255c", CD:"#1098ad",
+  Avanza:"#f59f00", PSE:"#862e9c", DSI:"#22b8cf", MOVER:"#4dabf7",
+  CONSTRUYE:"#94d82d", PID:"#ffd43b", AMIGO:"#e64980", RETO:"#b197fc",
+  Todos:"#9775fa", SUR:"#20c997", LOCAL:"#868e96", OTRO:"#adb5bd",
+};
+const colorDe = (fam) => FAM_COLOR[fam] || "#adb5bd";
+let datos = null, ordenPref = "electores";
+
+function barra(cands, n = 4) {
+  const top = cands.slice(0, n);
+  const tot = top.reduce((a, c) => a + (c.pct_proy || 0), 0) || 1;
+  return `<div class="bar" title="${top.map((c) => c.familia + " " + fmtPct(c.pct_proy)).join(" · ")}">` +
+    top.map((c) => `<span style="width:${(100 * c.pct_proy / tot).toFixed(2)}%;background:${colorDe(c.familia)}"></span>`).join("") +
+    `</div>`;
+}
+function candPills(cands, n = 3) {
+  return `<div class="cands">` + cands.slice(0, n).map((c) =>
+    `<span class="cand" style="background:${colorDe(c.familia)}">${c.familia} ${c.pct_proy.toFixed(1)}%</span>`).join("") + `</div>`;
+}
+
+function pintarResumenNacional() {
+  const nac = (pref() && pref().nacional) || { candidatos: [] };
+  const cs = nac.candidatos || [];
+  $("escrutado_pill").textContent = "escrutado " + fmtPct(datos.escrutado_pct);
+  $("metodo").textContent = "método " + (datos.metodo_principal || "v1");
+  $("actualizado").textContent = "actualizado " + (datos.actualizado || "–");
+  $("titulo_eleccion").textContent = datos.eleccion || "Seccionales Ecuador";
+  $("referencia_pill").textContent = datos.referencia ? "ref. " + datos.referencia : "ref. –";
+  const b = $("banner");
+  if (datos.simulado) {
+    b.classList.remove("hidden");
+    b.innerHTML = "<b>SIMULACIÓN (prueba del tablero)</b> — se está visualizando la elección de " +
+      (datos.anio || "?") + " con el escrutinio recortado a " + fmtPct(datos.escrutado_pct) +
+      " simulado (referencia " + (datos.referencia || "?") + "). <b>No</b> es el escrutinio 2026 en vivo.";
+  } else { b.classList.add("hidden"); }
+  const top = cs.slice(0, 4);
+  $("resumen").innerHTML = top.map((c) => `
+    <div class="card">
+      <h3>${c.familia}</h3>
+      <div class="val" style="color:${colorDe(c.familia)}">${fmtPct(c.pct_proy)}</div>
+      <div class="small">crudo ${fmtPct(c.pct_crudo)} · ${fmtNum(c.votos_proy)} votos proy</div>
+    </div>`).join("");
+  if (window._chartNac) { window._chartNac.destroy(); window._chartNac = null; }
+  window._chartNac = new Chart($("chart_nac"), {
+    type: "bar",
+    data: { labels: cs.slice(0, 10).map((c) => c.familia),
+            datasets: [{ data: cs.slice(0, 10).map((c) => c.pct_proy),
+                         backgroundColor: cs.slice(0, 10).map((c) => colorDe(c.familia)) }] },
+    options: { indexAxis: "y", animation: false, responsive: true,
+      plugins: { legend: { display: false },
+                 tooltip: { callbacks: { label: (c) => c.parsed.x.toFixed(2) + "%" } } },
+      scales: { x: { ticks: { callback: (v) => v + "%" } } } },
+  });
+}
+
+function pref() { return (datos && datos.prefecto) || { territorios: [], nacional: {} }; }
+function alc() { return (datos && datos.alcalde) || { territorios: [], nacional: {} }; }
+datos = null; // placeholder; se reemplaza en refrescar
+function pintarPref() {
+  const q = ($("busca_pref").value || "").toLowerCase();
+  let ts = pref().territorios.filter((t) => t.nombre.toLowerCase().includes(q));
+  const val = (t) => ordenPref === "margen" ? (t.margen_proy || 0)
+    : ordenPref === "escrutado" ? t.escrutado
+    : ordenPref === "nombre" ? 0 : (t.electores_habilitados || 0);
+  if (ordenPref === "nombre") ts.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  else ts.sort((a, b) => val(b) - val(a));
+  $("cards_pref").innerHTML = ts.map((t) => `
+    <div class="card prov">
+      <h3>${t.nombre}</h3>
+      <div class="gan" style="color:${colorDe(t.ganador_proy)}">${t.ganador_proy || "–"}</div>
+      <div class="small">margen +${t.margen_proy == null ? "–" : t.margen_proy.toFixed(1)} pts ·
+        escrutado ${fmtPct(t.escrutado)}</div>
+      ${barra(t.candidatos)}
+      ${candPills(t.candidatos)}
+    </div>`).join("");
+}
+
+function pintarDetalle() {
+  const prov = $("sel_prov").value;
+  const t = pref().territorios.find((x) => x.cod === prov);
+  if (!t) return;
+  $("det_resumen").innerHTML = `
+    <div class="card"><h3>Ganador proyectado</h3>
+      <div class="val" style="color:${colorDe(t.ganador_proy)}">${t.ganador_proy || "–"}</div>
+      <div class="small">margen +${t.margen_proy == null ? "–" : t.margen_proy.toFixed(1)} pts</div></div>
+    <div class="card"><h3>Escrutado</h3><div class="val">${fmtPct(t.escrutado)}</div>
+      <div class="small">${fmtNum(t.electores_habilitados)} electores (ref.)</div></div>
+    <div class="card"><h3>Ganador crudo</h3>
+      <div class="val" style="color:${colorDe(t.ganador_crudo)}">${t.ganador_crudo || "–"}</div>
+      <div class="small">solo lo ya contado</div></div>`;
+  $("det_tabla").innerHTML = t.candidatos.map((c) => `
+    <tr><td><span class="cand" style="background:${colorDe(c.familia)}">${c.familia}</span></td>
+      <td class="num">${fmtPct(c.pct_crudo)}</td><td class="num">${fmtNum(c.votos_crudo)}</td>
+      <td class="num"><b>${fmtPct(c.pct_proy)}</b></td><td class="num">${fmtNum(c.votos_proy)}</td></tr>`).join("");
+  const serie = (pref().serie || []);
+  $("det_nota").textContent = serie.length ? "" : "(sin serie temporal en estos datos)";
+  if (window._chartDet) { window._chartDet.destroy(); window._chartDet = null; }
+  if (serie.length) {
+    const labels = serie.map((s) => s.t);
+    const fams = Object.keys(serie[0].candidatos || {}).slice(0, 6);
+    window._chartDet = new Chart($("chart_det"), {
+      type: "line",
+      data: { labels, datasets: fams.map((f) => ({
+        label: f, data: serie.map((s) => s.candidatos[f] ?? null),
+        borderColor: colorDe(f), backgroundColor: colorDe(f), borderWidth: 2,
+        pointRadius: 0, tension: 0.15, spanGaps: true })) },
+      options: { responsive: true, animation: false,
+        scales: { y: { ticks: { callback: (v) => v + "%" } } },
+        plugins: { legend: { position: "bottom" } } },
+    });
+  }
+}
+
+function pintarAlcaldias() {
+  const prov = $("sel_prov_alc").value;
+  const q = ($("busca_alc").value || "").toLowerCase();
+  let ts = alc().territorios.filter((t) => t.cod.startsWith(prov + "-") &&
+    t.nombre.toLowerCase().includes(q));
+  ts.sort((a, b) => (b.electores_habilitados || 0) - (a.electores_habilitados || 0));
+  $("cards_alc").innerHTML = ts.map((t) => `
+    <div class="card prov">
+      <h3>${t.nombre}</h3>
+      <div class="gan" style="color:${colorDe(t.ganador_proy)}">${t.ganador_proy || "–"}</div>
+      <div class="small">margen +${t.margen_proy == null ? "–" : t.margen_proy.toFixed(1)} pts ·
+        escrutado ${fmtPct(t.escrutado)}</div>
+      ${barra(t.candidatos)}
+      ${candPills(t.candidatos)}
+    </div>`).join("");
+}
+
+function llenarSelectores() {
+  const provs = pref().territorios.slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const opts = provs.map((t) => `<option value="${t.cod}">${t.nombre}</option>`).join("");
+  $("sel_prov").innerHTML = opts;
+  $("sel_prov_alc").innerHTML = opts;
+}
+
+async function refrescar() {
+  try {
+    const sep = DATOS_URL.includes("?") ? "&" : "?";
+    const r = await fetch(DATOS_URL + sep + "t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    datos = await r.json();
+    pintarResumenNacional();
+    llenarSelectores();
+    pintarPref();
+    pintarDetalle();
+    pintarAlcaldias();
+    await cargarGeo();
+    pintarMapaProv();
+    pintarMapaAlc();
+  } catch (e) {
+    $("actualizado").textContent = "sin datos todavía (" + e.message + ")";
+  }
+}
+
+// ---------- Mapas (Leaflet + GeoJSON local: provincias y cantones) ----------
+let geoProv = null, geoCant = null, mapProv = null, mapAlc = null, capaProv = null, capaAlc = null;
+
+function cargarLeaflet() {
+  if (window.L) return Promise.resolve();
+  const leaf = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.";
+  if (!document.getElementById("leaflet-css")) {
+    const l = document.createElement("link");
+    l.id = "leaflet-css"; l.rel = "stylesheet"; l.href = leaf + "css";
+    document.head.appendChild(l);
+  }
+  return new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = leaf + "js"; s.onload = res; s.onerror = rej; document.body.appendChild(s);
+  });
+}
+const tiles = () => L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  { maxZoom: 12, attribution: "© OpenStreetMap" });
+
+async function cargarGeo() {
+  if (!geoCant) {
+    try { geoCant = await (await fetch("cantones.geojson", { cache: "no-store" })).json(); }
+    catch (e) { geoCant = null; }
+  }
+  if (!geoProv) {
+    try { geoProv = await (await fetch("provincias.geojson", { cache: "no-store" })).json(); }
+    catch (e) { geoProv = null; }
+  }
+}
+
+function estiloTerritorio(t) {
+  return { color: "#fff", weight: 1,
+    fillColor: t ? colorDe(t.ganador_proy) : "#ccc", fillOpacity: .82 };
+}
+function tooltipTerr(t) {
+  return t ? `<b>${t.nombre}</b><br>${t.ganador_proy || "–"} (+${t.margen_proy == null ? "–" : t.margen_proy.toFixed(1)} pts)<br>
+    escrutado ${fmtPct(t.escrutado)}` : "sin datos";
+}
+// clave del cantón en el JSON: "prov-cantón" (p.ej. "01-260")
+const keyCanton = (f) => String(f.properties.cod_provincia).padStart(2, "0") + "-" +
+  String(f.properties.cod).padStart(3, "0");
+
+async function pintarMapaProv() {
+  $("mapa_msg").textContent = "";
+  if (!geoProv) { $("mapa_msg").textContent = "Sin provincias.geojson (mapa no disponible)."; return; }
+  await cargarLeaflet();
+  const index = {}; pref().territorios.forEach((t) => { index[String(t.cod)] = t; });
+  if (!mapProv) { mapProv = L.map("mapa").setView([-1.4, -78.4], 6); tiles().addTo(mapProv); }
+  if (capaProv) mapProv.removeLayer(capaProv);
+  capaProv = L.geoJSON(geoProv, {
+    style: (f) => estiloTerritorio(index[String(f.properties.cod || "").padStart(2, "0")]),
+    onEachFeature: (f, l) => l.bindTooltip(tooltipTerr(index[String(f.properties.cod || "").padStart(2, "0")])),
+  }).addTo(mapProv);
+  mapProv.invalidateSize();
+}
+
+async function pintarMapaAlc() {
+  const prov = $("sel_prov_alc").value;
+  $("mapa_alc_msg").textContent = "";
+  if (!geoCant) { $("mapa_alc_msg").textContent = "Sin cantones.geojson (mapa no disponible)."; return; }
+  await cargarLeaflet();
+  const index = {}; alc().territorios.forEach((t) => { index[String(t.cod)] = t; });
+  const feats = geoCant.features.filter((f) => String(f.properties.cod_provincia).padStart(2, "0") === String(prov).padStart(2, "0"));
+  if (!mapAlc) { mapAlc = L.map("mapa_alc").setView([-1.4, -78.4], 7); tiles().addTo(mapAlc); }
+  if (capaAlc) mapAlc.removeLayer(capaAlc);
+  capaAlc = L.geoJSON({ type: "FeatureCollection", features: feats }, {
+    style: (f) => estiloTerritorio(index[keyCanton(f)]),
+    onEachFeature: (f, l) => l.bindTooltip(tooltipTerr(index[keyCanton(f)])),
+  }).addTo(mapAlc);
+  if (feats.length) mapAlc.fitBounds(capaAlc.getBounds(), { padding: [10, 10] });
+  mapAlc.invalidateSize();
+}
+
+document.querySelectorAll(".tabs button").forEach((b) =>
+  b.addEventListener("click", () => {
+    document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
+    $("tab-pref").classList.toggle("hidden", b.dataset.tab !== "pref");
+    $("tab-det").classList.toggle("hidden", b.dataset.tab !== "det");
+    $("tab-alc").classList.toggle("hidden", b.dataset.tab !== "alc");
+    setTimeout(() => { if (mapProv) mapProv.invalidateSize(); if (mapAlc) mapAlc.invalidateSize(); }, 50);
+  }));
+$("orden_pref").addEventListener("change", (e) => { ordenPref = e.target.value; pintarPref(); });
+$("busca_pref").addEventListener("input", pintarPref);
+$("busca_alc").addEventListener("input", pintarAlcaldias);
+$("sel_prov").addEventListener("change", pintarDetalle);
+$("sel_prov_alc").addEventListener("change", () => { pintarAlcaldias(); pintarMapaAlc(); });
+
+refrescar();
+setInterval(refrescar, 60000);
+</script>
+</body>
+</html>
