@@ -174,9 +174,12 @@ provincia/cantón) con:
 - evolución temporal.
 
 **C2. Sitio** (`web/index.html` + `config.js`): dashboard con selector de dignidad
-(prefecto/alcalde/concejales), mapa/tabla por provincia y cantón, y pestañas de
+(prefecto/alcalde/concejales), mapa por provincia y cantón, y pestañas de
 "crudo" vs "proyectado". Reutiliza `index.html` (Chart.js) y el pipeline de
 publicación (`publicar_rodri.py`, rama `data`, GitHub Pages, worker).
+
+> **Diseño detallado del dashboard en `docs/DASHBOARD.md`** (3 pestañas: prefecturas con
+> mapas y método v1; detalle de una prefectura con evolución; alcaldías por prefectura).
 
 ---
 

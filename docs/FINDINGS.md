@@ -672,3 +672,78 @@ que rotan) ganaba **v1**.
 → **Elección de método según el tipo de elección:** *nacional* → jerárquico;
 *local (alcaldías/concejalías)* → v1. Para **prefectos** conviene comparar en vivo y
 elegir (son provinciales, intermedios).
+
+---
+
+## 12. Forense: detección de mesas para fiscalizar — 2026-10-14
+
+`forense/digitos.py` (2BL/chi², último dígito, C05s/P05s) y `forense/juntas.py`
+(score por mesa: z del share del partido líder dentro del cantón/parroquia + z de
+dígitos redondeados). Simulación con anomalías inyectadas en 5% de las 40.058 juntas
+de **prefecto 2023** (`forense/simular.py`):
+
+| escenario | AUC | TPR@1% FPR | TPR@5% FPR |
+|---|---|---|---|
+| boost obvio (+80% al líder) | 0,917 | 12% | 49% |
+| boost medio (+40%) | 0,782 | 5% | 25% |
+| boost sutil (+20%) | 0,631 | 2% | 10% |
+| coerce (líder a 90%) | 0,921 | 13% | 50% |
+| redondeo a múltiplos de 5 | 0,949 | 16% | 79% |
+| redondeo a múltiplos de 10 | 0,884 | 16% | 72% |
+
+Lectura: **fraudes obvios y señales de dígitos (redondeo) se detectan bien** (hasta 79%
+a 5% FPR); los desvíos **sutiles de share son difíciles** (AUC 0,63). El score sirve
+para **priorizar** fiscalización, no como veredicto. Pendiente: incorporar el modelo
+de mezclas finitas (Mebane) — requiere electores habilitados (N) por junta.
+
+## 13. Inferencia ecológica presidencial 2021→2025 — 2026-10-14
+
+`inferencia/ecologica.py` (EM por parroquia; 1.296 parroquias). Matriz de transición
+theta[j,k] = P(votar k en 2025 | votar j en 2021), en %:
+
+| origen \ destino | RC | ADN | MUPP | CREO | PSC | RESTO | NOV |
+|---|---|---|---|---|---|---|---|
+| RC (Arauz) | **98,5** | 0,0 | 0,0 | 0,0 | 1,0 | 0,4 | 0,0 |
+| MUPP (Yaku) | 17,9 | 39,8 | 27,3 | 0,2 | 0,0 | 5,4 | 9,4 |
+| CREO (Lasso) | 0,0 | **95,0** | 0,0 | 0,4 | 0,6 | 4,0 | 0,0 |
+| ID (Hervás) | 17,0 | 77,7 | 0,0 | 0,0 | 0,0 | 5,3 | 0,0 |
+| RESTO | 46,7 | 31,8 | 0,0 | 1,2 | 2,6 | 17,8 | 0,0 |
+| NOV (no votó) | 2,9 | 5,3 | 0,1 | 0,0 | 0,0 | 1,6 | **90,1** |
+
+Lectura: el **voto correísta es muy leal** (RC→RC 98,5%); el **anti-correísmo se consolidó
+en ADN** (CREO→ADN 95%, ID→ADN 78%, RESTO→ADN 32%); el MUPP se partió (40% ADN, 27%
+se queda, 18% RC, 9% se abstuvo); **los no votantes se mantienen** (NOV→NOV 90%).
+**Ahora sí incluye "No voto"** (con los registros electorales 2021/2025).
+
+## 14. Datos de padrón y forense de participación — 2026-10-14
+
+Se descargaron los **registros electorales** del CNE (nivel parroquia × sexo × edad):
+
+| Año | Archivo | Electores | URL |
+|---|---|---:|---|
+| 2021 | `registro_electoral_2021.sav` | 13.099.150 | `…/download/registro-electoral/?wpdmdl=20902` |
+| 2023 | `registro_electoral_parroquial_2023.sav` | 13.450.047 | `…/registro-electoral-a-nivel-parroquial-2023/?wpdmdl=39832` |
+| 2025 | `registro_electoral_parroquial_2025.sav` | 13.736.315 | `…/registro-electoral-a-nivel-parroquial-5/?wpdmdl=57394` |
+
+(`datos/registro.py`). Con eso: participación 2021 = **81,0%**, 2025 = **82,1%** (coincide
+con lo oficial). **Limitación:** el padrón es parroquia, **no por junta** (el CNE no
+publica electores por mesa) → el forense de turnout y el modelo de mezclas se corren a
+nivel **parroquia** (o por provincia/cantón).
+
+**Forense de participación** (`forense/juntas.py`): se agregaron señales de ballot stuffing
+—`z_emit` (emitidos altos dentro del cantón) y `z_bn` (caída de blanco/nulo)— con señales
+de un solo lado. En la simulación, el stuffing se detecta bien:
+
+| escenario (5% de 40.015 juntas) | AUC | TPR@1% | TPR@5% |
+|---|---|---|---|
+| stuffing obvio (+80%) | 0,988 | 17% | 78% |
+| stuffing medio (+30%) | 0,919 | 9% | 46% |
+| stuffing sutil (+12%) | 0,743 | 1% | 12% |
+| round5 (dígitos) | 0,954 | 16% | 79% |
+
+**Modelo de mezclas finitas** (`forense/mezclas.py`, aprox. de Mebane/Klimek): GMM de 3
+componentes sobre `[logit(turnout), logit(share del líder)]` por parroquia; el score es la
+responsabilidad del componente de esquina alta (turnout+share) minoritario. Validación
+inyectando fraude extremo (turnout 99%, share 90%) en 5% de las parroquias:
+**AUC = 1,000 (2025)** y **0,998 (2021)**. Es una aproximación práctica (el modelo exacto
+de Mebane está en el paquete R `eforensics`).

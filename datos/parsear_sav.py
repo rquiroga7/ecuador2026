@@ -54,7 +54,7 @@ def cargar(path, anio=None):
     # dignidad: si sólo viene el nombre (2021) y es numérico, usarlo como código
     if "dignidad_codigo" not in df.columns:
         df["dignidad_codigo"] = df["dignidad_nombre"]
-    df["dignidad_codigo"] = pd.to_numeric(df["dignidad_codigo"], errors="coerce")
+    df["dignidad_codigo"] = pd.to_numeric(df["dignidad_codigo"], errors="coerce").fillna(0)
     if anio == 2019:
         df["dignidad"] = df["dignidad_codigo"].map(DIGNIDAD_2019)
     else:
