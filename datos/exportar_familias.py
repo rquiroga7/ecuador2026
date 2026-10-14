@@ -50,6 +50,19 @@ CORREISMO_2026 = {
 VOCAB = ["RC", "PSC", "MUPP", "CREO", "SUMA", "ID", "UP", "PSP", "CD", "Avanza",
          "PSE", "DSI", "MOVER", "CONSTRUYE", "PID", "AMIGO", "ADN", "LOCAL", "OTRO"]
 
+
+def _lineas_instructivo():
+    """Instructivo (docs/INSTRUCTIVO_FAMILIAS.md) como lista de líneas."""
+    p = os.path.join(rd.REPO, "docs", "INSTRUCTIVO_FAMILIAS.md")
+    if os.path.exists(p):
+        with open(p, encoding="utf-8") as f:
+            return f.read().splitlines()
+    out = []
+    for tema, det in INSTRUCCIONES:
+        out += [f"# {tema}", det, ""]
+    return out
+
+
 INSTRUCCIONES = [
     ["Objetivo",
      "Agrupar cada partido/movimiento (número de lista) en una FAMILIA política estable, "
@@ -196,8 +209,8 @@ def main():
 
     out = rd.ruta("familias_ecuador_2019_2023_2026.xlsx")
     with pd.ExcelWriter(out, engine="openpyxl") as xl:
-        pd.DataFrame(INSTRUCCIONES, columns=["tema", "detalle"]).to_excel(
-            xl, sheet_name="Instrucciones", index=False)
+        pd.DataFrame({"Instructivo": _lineas_instructivo()}).to_excel(
+            xl, sheet_name="Instructivo", index=False)
         df[["lista", "nombre_2019", "siglas_2019", "ambito_2019", "nombre_2023",
             "nombre_2026", "correismo_2026", "familia", "pref_2019", "pref_2023",
             "sh_pref_2019", "sh_pref_2023", "d_sh_pref", "alc_2019", "alc_2023",
@@ -218,7 +231,7 @@ def main():
         col = list(mapa.columns).index("familia") + 1
         letra = get_column_letter(col)
         dv = DataValidation(type="list",
-                            formula1=f"=Vocabulario!$A$2:$A${len(VOCAB) + 1}",
+                            formula1=f"Vocabulario!$A$2:$A${len(VOCAB) + 1}",
                             allow_blank=True, showDropDown=False)
         ws.add_data_validation(dv)
         dv.add(f"{letra}2:{letra}{len(mapa) + 1}")
@@ -228,10 +241,15 @@ def main():
                   "notas": 30}
         for i, c in enumerate(mapa.columns, start=1):
             ws.column_dimensions[get_column_letter(i)].width = anchos.get(c, 12)
-        # instrucciones: ancho
-        ws2 = wb["Instrucciones"]
-        ws2.column_dimensions["A"].width = 22
-        ws2.column_dimensions["B"].width = 110
+        # hoja Instructivo: ancho, ajuste de texto y negrita en títulos
+        from openpyxl.styles import Alignment, Font
+        wsi = wb["Instructivo"]
+        wsi.column_dimensions["A"].width = 110
+        for row in wsi.iter_rows(min_col=1, max_col=1):
+            c = row[0]
+            c.alignment = Alignment(wrap_text=True, vertical="top")
+            if c.value and str(c.value).startswith("#"):
+                c.font = Font(bold=True)
 
     print(f"[OK] XLSX -> {out}")
     print(f"     {len(df)} listas | pref2019={tp19:,} pref2023={tp23:,} "
