@@ -1,0 +1,23 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+
+# === CREDENCIALES: NUNCA versionar ===
+Claves_Azure_File_Storage*.txt
+*.sas
+.env
+
+# === DATOS CRUDOS / DERIVADOS ===
+# Viven en D:\ecuador2026_data (ver rutas_datos.py); no se versionan.
+*.csv
+*.parquet
+*.part
+DATOS*.zip
+datos_web.json
+datos_proyeccion_*.json
+*.xlsx
+
+# Directorios de datos/artefactos
+backtest_snapshots/
+backtest_resultados/
+snapshots/
