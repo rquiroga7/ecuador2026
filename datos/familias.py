@@ -41,14 +41,15 @@ import rutas_datos as rd
 FAMILIA = {
     "1": "CD", "2": "UP", "3": "PSP", "4": "PID", "5": "RC", "6": "PSC",
     "7": "ADN", "8": "Avanza", "12": "ID", "16": "AMIGO", "17": "PSE",
-    "18": "MUPP", "20": "DSI", "21": "CREO", "23": "SUMA", "25": "CONSTRUYE",
+    "18": "MUPP", "20": "MF", "21": "CREO", "23": "SUMA", "25": "CONSTRUYE",
     "33": "RETO", "35": "MOVER", "70": "Todos", "72": "RC", "100": "SUR",
 }
 
 # Familias válidas (vocabulario del XLSX / desplegable). Alias del linaje correísta
 # (AMIGO, PSE, UP, Todos) se mantienen separadas y se homologan en la hoja editable.
+# Siglas alineadas con la tabla oficial de partidos/movimientos nacionales 2026.
 VOCAB = ["RC", "PSC", "MUPP", "CREO", "SUMA", "ID", "UP", "PSP", "CD", "Avanza",
-         "PSE", "DSI", "MOVER", "CONSTRUYE", "PID", "AMIGO", "ADN", "RETO", "Todos",
+         "PSE", "MF", "MOVER", "CONSTRUYE", "PID", "AMIGO", "ADN", "RETO", "Todos",
          "LOCAL", "OTRO"]
 
 XLSX_NOMBRE = "familias_ecuador_2019_2023_2026.xlsx"

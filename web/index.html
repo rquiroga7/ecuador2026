@@ -69,7 +69,6 @@
     <span id="actualizado">cargando…</span>
     <span class="pill" id="metodo">método –</span>
     <span class="pill" id="escrutado_pill">escrutado –</span>
-    <span class="pill" id="referencia_pill">ref. –</span>
   </div>
   <div id="banner" class="banner hidden"></div>
 
@@ -77,6 +76,8 @@
     <button data-tab="pref" class="active">Prefecturas</button>
     <button data-tab="det">Detalle de prefectura</button>
     <button data-tab="alc">Alcaldías</button>
+    <button data-tab="ei">Inferencia ecológica</button>
+    <button data-tab="for">Forense (mesas)</button>
   </div>
 
   <!-- ============ TAB 1: PREFECTURAS ============ -->
@@ -139,6 +140,54 @@
     <div class="grid" id="cards_alc"></div>
   </section>
 
+  <!-- ============ TAB 4: INFERENCIA ECOLÓGICA ============ -->
+  <section id="tab-ei" class="hidden">
+    <div class="toolbar">
+      <label>Par de elecciones: <select id="sel_ei"></select></label>
+      <span class="small" id="ei_nota"></span>
+    </div>
+    <div class="panel">
+      <h2>Matriz de transición del voto (%)</h2>
+      <div class="small" style="margin-bottom:.6rem">
+        θ[j,k] = P(votar o abstenerse por <b>k</b> en el destino | <b>j</b> en el origen),
+        estimada por EM a nivel parroquia. Filas = origen, columnas = destino.
+        La diagonal (en negrita) es la lealtad.
+      </div>
+      <div id="ei_tabla" style="overflow-x:auto"></div>
+    </div>
+  </section>
+
+  <!-- ============ TAB 5: FORENSE (MESAS) ============ -->
+  <section id="tab-for" class="hidden">
+    <div class="toolbar">
+      <label>Dignidad: <select id="sel_for"></select></label>
+      <button id="btn_csv">Exportar CSV</button>
+      <span class="small" id="for_resumen"></span>
+    </div>
+    <div class="panel">
+      <h2>Mesas sospechosas (de mayor a menor)</h2>
+      <div class="small" style="margin-bottom:.5rem">
+        <b>score</b> = máximo de las señales estandarizadas contra el cantón;
+        <b>q</b> = tasa de falsos descubrimientos (Benjamini–Hochberg).
+        <span class="pill" style="background:#b10026;color:#fff">Alta</span> q&lt;0,01 y score≥4 ·
+        <span class="pill" style="background:#f08c00;color:#fff">Media</span> q&lt;0,05 ·
+        <span class="pill" style="background:#adb5bd;color:#fff">Baja</span> resto.
+        Esto <b>prioriza</b> la fiscalización; <b>no</b> prueba fraude.
+      </div>
+      <div id="for_leyenda" class="small" style="margin-bottom:.6rem"></div>
+      <div style="overflow-x:auto;max-height:72vh">
+        <table id="for_tabla">
+          <thead><tr>
+            <th class="num">#</th><th>Provincia</th><th>Cantón</th><th>Parroquia</th>
+            <th>Mesa</th><th class="num">Votantes</th><th class="num">Score</th>
+            <th class="num">q</th><th>Prioridad</th><th>Sospecha gatillada</th>
+          </tr></thead>
+          <tbody id="for_body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
   <footer>
     Proyección no oficial con fines de análisis · método <b>v1</b> (relleno jerárquico
     parroquia → cantón → provincia → nación) sobre <b>familias</b> de partidos; el
@@ -157,7 +206,7 @@ const fmtNum = (v) => (v == null ? "–" : Number(v).toLocaleString("es"));
 const FAM_COLOR = {
   RC:"#d6336c", ADN:"#1c7ed6", PSC:"#f08c00", MUPP:"#2f9e44", CREO:"#7048e8",
   SUMA:"#0ca678", ID:"#e8590c", UP:"#5f3dc4", PSP:"#c2255c", CD:"#1098ad",
-  Avanza:"#f59f00", PSE:"#862e9c", DSI:"#22b8cf", MOVER:"#4dabf7",
+  Avanza:"#f59f00", PSE:"#862e9c", MF:"#22b8cf", MOVER:"#4dabf7",
   CONSTRUYE:"#94d82d", PID:"#ffd43b", AMIGO:"#e64980", RETO:"#b197fc",
   Todos:"#9775fa", SUR:"#20c997", LOCAL:"#868e96", OTRO:"#adb5bd",
 };
@@ -183,13 +232,13 @@ function pintarResumenNacional() {
   $("metodo").textContent = "método " + (datos.metodo_principal || "v1");
   $("actualizado").textContent = "actualizado " + (datos.actualizado || "–");
   $("titulo_eleccion").textContent = datos.eleccion || "Seccionales Ecuador";
-  $("referencia_pill").textContent = datos.referencia ? "ref. " + datos.referencia : "ref. –";
   const b = $("banner");
   if (datos.simulado) {
+    const orden = (datos.orden_carga || "aleatorio").replace("2021", " 2021");
     b.classList.remove("hidden");
-    b.innerHTML = "<b>SIMULACIÓN (prueba del tablero)</b> — se está visualizando la elección de " +
-      (datos.anio || "?") + " con el escrutinio recortado a " + fmtPct(datos.escrutado_pct) +
-      " simulado (referencia " + (datos.referencia || "?") + "). <b>No</b> es el escrutinio 2026 en vivo.";
+    b.innerHTML = "<b>SIMULACIÓN (prueba del tablero)</b> — se muestra la elección de " +
+      (datos.anio || "?") + " con " + fmtPct(datos.escrutado_pct) + " del escrutinio simulado " +
+      "(orden de carga: <b>" + orden + "</b>). <b>No</b> es el escrutinio 2026 en vivo.";
   } else { b.classList.add("hidden"); }
   const top = cs.slice(0, 4);
   $("resumen").innerHTML = top.map((c) => `
@@ -242,7 +291,7 @@ function pintarDetalle() {
       <div class="val" style="color:${colorDe(t.ganador_proy)}">${t.ganador_proy || "–"}</div>
       <div class="small">margen +${t.margen_proy == null ? "–" : t.margen_proy.toFixed(1)} pts</div></div>
     <div class="card"><h3>Escrutado</h3><div class="val">${fmtPct(t.escrutado)}</div>
-      <div class="small">${fmtNum(t.electores_habilitados)} electores (ref.)</div></div>
+      <div class="small">${fmtNum(t.electores_habilitados)} votos (tamaño)</div></div>
     <div class="card"><h3>Ganador crudo</h3>
       <div class="val" style="color:${colorDe(t.ganador_crudo)}">${t.ganador_crudo || "–"}</div>
       <div class="small">solo lo ya contado</div></div>`;
@@ -286,6 +335,103 @@ function pintarAlcaldias() {
     </div>`).join("");
 }
 
+// ---------- Inferencia ecológica ----------
+let eiData = null;
+function colorEI(v) {
+  const t = Math.max(0, Math.min(1, v / 100));         // amarillo claro -> rojo
+  const a = [255, 245, 204], b = [177, 0, 38];
+  const c = a.map((x, i) => Math.round(x + (b[i] - x) * t));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+function pintarEI() {
+  if (!eiData || !eiData.pares.length) {
+    $("ei_tabla").innerHTML = "<p class='small'>Sin datos de inferencia ecológica " +
+      "(ejecutá <code>python -m inferencia.web</code>).</p>";
+    return;
+  }
+  const id = $("sel_ei").value || eiData.pares[0].id;
+  const p = eiData.pares.find((x) => x.id === id) || eiData.pares[0];
+  const head = "<tr><th></th>" + p.destino.map((d) => `<th class="num">${d}</th>`).join("") + "</tr>";
+  const rows = p.origen.map((o, i) =>
+    `<tr><th>${o}</th>` + p.matriz[i].map((v, j) => {
+      const bg = colorEI(v), col = v > 55 ? "#fff" : "inherit";
+      const diag = i === j ? "font-weight:700" : "";
+      return `<td class="num" style="background:${bg};color:${col};${diag}">${Math.round(v)}</td>`;
+    }).join("") + "</tr>").join("");
+  $("ei_nota").textContent = p.nota || "";
+  $("ei_tabla").innerHTML = `<table><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+}
+// ---------- Forense (mesas) ----------
+let forData = null;
+const colorPrior = (p) => p === "Alta" ? "#b10026" : p === "Media" ? "#f08c00" : "#adb5bd";
+const qTxt = (q) => q == null ? "" : (q < 0.001 ? q.toExponential(1) : q.toFixed(3));
+function pintarForense() {
+  const dig = $("sel_for").value || "prefecto";
+  const blk = ((forData && forData.por_dignidad) || {})[dig] || { items: [], resumen: {} };
+  const r = blk.resumen || {};
+  $("for_resumen").textContent = `${r.mesas || 0} mesas · Alta ${r.prioridad_alta || 0} · ` +
+    `Media ${r.prioridad_media || 0} · q<0.05 ${r["q<0.05"] || 0}`;
+  const txt = (forData && forData.senal_txt) || {};
+  $("for_body").innerHTML = blk.items.map((it) => {
+    const col = colorPrior(it.prioridad);
+    const tags = it.sospechas.map((s) =>
+      `<span class="pill" style="background:${col};color:#fff;margin:.1rem">${txt[s] || s}</span>`).join(" ");
+    return `<tr style="border-left:4px solid ${col}">
+      <td class="num">${it.rank}</td>
+      <td>${it.provincia}</td><td>${it.canton}</td><td class="small">${it.parroquia || ""}</td>
+      <td class="small">${it.mesa_id}</td>
+      <td class="num">${fmtNum(it.emitidos)}</td>
+      <td class="num" style="color:${col};font-weight:700">${it.score}</td>
+      <td class="num small">${qTxt(it.q)}</td>
+      <td><span class="pill" style="background:${col};color:#fff">${it.prioridad}</span></td>
+      <td>${tags}</td>
+    </tr>`;
+  }).join("");
+}
+async function cargarForense() {
+  if (forData) { pintarForense(); return; }
+  try { forData = await (await fetch("forense.json", { cache: "no-store" })).json(); }
+  catch (e) { forData = { por_dignidad: {} }; }
+  const digs = Object.keys(forData.por_dignidad || {});
+  if (digs.length) $("sel_for").innerHTML = digs.map(
+    (d) => `<option value="${d}">${d}</option>`).join("");
+  const txt = forData.senal_txt || {};
+  $("for_leyenda").innerHTML = Object.entries(txt).map(
+    ([k, v]) => `<span class="pill" style="margin:.12rem">${v}</span>`).join(" ");
+  pintarForense();
+}
+function exportarForense() {
+  const dig = $("sel_for").value || "prefecto";
+  const blk = ((forData && forData.por_dignidad) || {})[dig] || { items: [] };
+  const txt = (forData && forData.senal_txt) || {};
+  const cols = ["rank", "prioridad", "provincia", "canton", "parroquia", "mesa_id",
+                "emitidos", "share_lider", "score", "q", "sospechas"];
+  const q = (s) => `"${String(s == null ? "" : s).replace(/"/g, "'")}"`;
+  const lines = [cols.join(",")];
+  for (const it of blk.items) {
+    lines.push([it.rank, it.prioridad, q(it.provincia), q(it.canton), q(it.parroquia),
+      it.mesa_id, it.emitidos, it.share_lider, it.score, it.q == null ? "" : it.q,
+      q(it.sospechas.map((s) => txt[s] || s).join("; "))].join(","));
+  }
+  const blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `mesas_sospechosas_${dig}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function cargarEI() {
+  if (eiData) { pintarEI(); return; }
+  try { eiData = await (await fetch("ei.json", { cache: "no-store" })).json(); }
+  catch (e) { eiData = { pares: [] }; }
+  if (eiData.pares.length) {
+    $("sel_ei").innerHTML = eiData.pares.map(
+      (p) => `<option value="${p.id}">${p.titulo}</option>`).join("");
+  }
+  pintarEI();
+}
+
 function llenarSelectores() {
   const provs = pref().territorios.slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
   const opts = provs.map((t) => `<option value="${t.cod}">${t.nombre}</option>`).join("");
@@ -307,13 +453,16 @@ async function refrescar() {
     await cargarGeo();
     pintarMapaProv();
     pintarMapaAlc();
+    await cargarEI();
+    await cargarForense();
   } catch (e) {
     $("actualizado").textContent = "sin datos todavía (" + e.message + ")";
   }
 }
 
 // ---------- Mapas (Leaflet + GeoJSON local: provincias y cantones) ----------
-let geoProv = null, geoCant = null, mapProv = null, mapAlc = null, capaProv = null, capaAlc = null;
+let geoProv = null, geoCant = null, geoMascara = null;
+let mapProv = null, mapAlc = null, capaProv = null, capaAlc = null;
 
 function cargarLeaflet() {
   if (window.L) return Promise.resolve();
@@ -328,18 +477,26 @@ function cargarLeaflet() {
     s.src = leaf + "js"; s.onload = res; s.onerror = rej; document.body.appendChild(s);
   });
 }
-const tiles = () => L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  { maxZoom: 12, attribution: "© OpenStreetMap" });
+const tiles = () => L.tileLayer(
+  "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+  { maxZoom: 19, attribution: "© OpenStreetMap · © CARTO" });
 
 async function cargarGeo() {
-  if (!geoCant) {
-    try { geoCant = await (await fetch("cantones.geojson", { cache: "no-store" })).json(); }
-    catch (e) { geoCant = null; }
-  }
-  if (!geoProv) {
-    try { geoProv = await (await fetch("provincias.geojson", { cache: "no-store" })).json(); }
-    catch (e) { geoProv = null; }
-  }
+  const get = async (f) => { try { return await (await fetch(f, { cache: "no-store" })).json(); }
+                             catch (e) { return null; } };
+  if (!geoCant) geoCant = await get("cantones.geojson");
+  if (!geoProv) geoProv = await get("provincias.geojson");
+  if (!geoMascara) geoMascara = await get("mascara.geojson");
+}
+
+// Tapa con gris todo lo que NO es Ecuador (países vecinos y océano).
+function addMascara(map) {
+  if (!geoMascara || map._mascara) return;
+  L.geoJSON(geoMascara, {
+    interactive: false,
+    style: { fillColor: "#e6eaee", fillOpacity: 1, color: "#c2ccd6", weight: 1 },
+  }).addTo(map);
+  map._mascara = true;
 }
 
 function estiloTerritorio(t) {
@@ -359,12 +516,26 @@ async function pintarMapaProv() {
   if (!geoProv) { $("mapa_msg").textContent = "Sin provincias.geojson (mapa no disponible)."; return; }
   await cargarLeaflet();
   const index = {}; pref().territorios.forEach((t) => { index[String(t.cod)] = t; });
-  if (!mapProv) { mapProv = L.map("mapa").setView([-1.4, -78.4], 6); tiles().addTo(mapProv); }
+  const key = (f) => String(f.properties.cod || "").padStart(2, "0");
+  if (!mapProv) {
+    mapProv = L.map("mapa").setView([-1.4, -78.4], 6);
+    tiles().addTo(mapProv);
+    addMascara(mapProv);
+    mapProv._fit = true;
+  }
   if (capaProv) mapProv.removeLayer(capaProv);
   capaProv = L.geoJSON(geoProv, {
-    style: (f) => estiloTerritorio(index[String(f.properties.cod || "").padStart(2, "0")]),
-    onEachFeature: (f, l) => l.bindTooltip(tooltipTerr(index[String(f.properties.cod || "").padStart(2, "0")])),
+    style: (f) => estiloTerritorio(index[key(f)]),
+    onEachFeature: (f, l) => l.bindTooltip(tooltipTerr(index[key(f)])),
   }).addTo(mapProv);
+  if (mapProv._fit) {   // encuadrar al Ecuador continental (Galápagos 20 sin prefecto)
+    try {
+      const cont = { type: "FeatureCollection",
+                     features: geoProv.features.filter((f) => key(f) !== "20") };
+      mapProv.fitBounds(L.geoJSON(cont).getBounds(), { padding: [8, 8] });
+      mapProv._fit = false;
+    } catch (e) {}
+  }
   mapProv.invalidateSize();
 }
 
@@ -375,7 +546,7 @@ async function pintarMapaAlc() {
   await cargarLeaflet();
   const index = {}; alc().territorios.forEach((t) => { index[String(t.cod)] = t; });
   const feats = geoCant.features.filter((f) => String(f.properties.cod_provincia).padStart(2, "0") === String(prov).padStart(2, "0"));
-  if (!mapAlc) { mapAlc = L.map("mapa_alc").setView([-1.4, -78.4], 7); tiles().addTo(mapAlc); }
+  if (!mapAlc) { mapAlc = L.map("mapa_alc").setView([-1.4, -78.4], 7); tiles().addTo(mapAlc); addMascara(mapAlc); }
   if (capaAlc) mapAlc.removeLayer(capaAlc);
   capaAlc = L.geoJSON({ type: "FeatureCollection", features: feats }, {
     style: (f) => estiloTerritorio(index[keyCanton(f)]),
@@ -391,6 +562,8 @@ document.querySelectorAll(".tabs button").forEach((b) =>
     $("tab-pref").classList.toggle("hidden", b.dataset.tab !== "pref");
     $("tab-det").classList.toggle("hidden", b.dataset.tab !== "det");
     $("tab-alc").classList.toggle("hidden", b.dataset.tab !== "alc");
+    $("tab-ei").classList.toggle("hidden", b.dataset.tab !== "ei");
+    $("tab-for").classList.toggle("hidden", b.dataset.tab !== "for");
     setTimeout(() => { if (mapProv) mapProv.invalidateSize(); if (mapAlc) mapAlc.invalidateSize(); }, 50);
   }));
 $("orden_pref").addEventListener("change", (e) => { ordenPref = e.target.value; pintarPref(); });
@@ -398,6 +571,9 @@ $("busca_pref").addEventListener("input", pintarPref);
 $("busca_alc").addEventListener("input", pintarAlcaldias);
 $("sel_prov").addEventListener("change", pintarDetalle);
 $("sel_prov_alc").addEventListener("change", () => { pintarAlcaldias(); pintarMapaAlc(); });
+$("sel_ei").addEventListener("change", pintarEI);
+$("sel_for").addEventListener("change", pintarForense);
+$("btn_csv").addEventListener("click", exportarForense);
 
 refrescar();
 setInterval(refrescar, 60000);

@@ -33,7 +33,7 @@ NOMBRE_2026 = {
     "7": "Acción Democrática Nacional (ADN)", "8": "Avanza",
     "12": "Izquierda Democrática (ID)", "16": "AMIGO (correísmo)",
     "17": "Partido Socialista Ecuatoriano (PSE)", "18": "Pachakutik (MUPP)",
-    "20": "Futuro (antes Democracia Sí)", "21": "CREO", "23": "SUMA",
+    "20": "Movimiento Futuro (MF; antes Democracia Sí)", "21": "CREO", "23": "SUMA",
     "25": "Construye", "33": "RETO", "35": "MOVER", "70": "Movimiento Todos",
 }
 

@@ -37,7 +37,7 @@ Columnas de la hoja:
    de lista. Ejemplos:
    - **FCS (2019) → Revolución Ciudadana (2023)** = familia **`RC`**.
    - **Alianza PAIS → MOVER** = familia **`MOVER`**.
-   - **Democracia Sí → Futuro** = familia **`DSI`**.
+   - **Democracia Sí → Movimiento Futuro** = familia **`MF`** (lista 20).
 3. Movimientos **puramente locales/provinciales** sin familia nacional → **`LOCAL`**
    (o `LOCAL-<provincia>` si querés distinguirlos).
 4. **2026 — caso especial:** `RC` (lista 5) y `Amigo` (16) están **suspendidas**, y el
@@ -53,7 +53,7 @@ Columnas de la hoja:
 ## Vocabulario de familias
 
 `RC` · `PSC` · `MUPP` · `CREO` · `SUMA` · `ID` · `UP` · `PSP` · `CD` · `Avanza` ·
-`PSE` · `DSI` · `MOVER` · `CONSTRUYE` · `PID` · `AMIGO` · `ADN` · `LOCAL` · `OTRO`
+`PSE` · `MF` · `MOVER` · `CONSTRUYE` · `PID` · `AMIGO` · `ADN` · `RETO` · `LOCAL` · `OTRO`
 
 ## Ejemplos
 

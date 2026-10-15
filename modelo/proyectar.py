@@ -206,14 +206,15 @@ def construir(dignidad, snapshot, ref_fam, metodo="v1", serie=None):
 # ---------------------------------------------------------------------------
 def emitir(dignidades_snap, refs=None, metodo="v1", destino=None, series=None,
            eleccion="Seccionales Ecuador 2026", anio=None, referencia=None,
-           simulado=False):
+           simulado=False, orden=None):
     """dignidades_snap: {dignidad: snapshot}. Escribe datos_web.json (contrato web)."""
     refs = refs or {}
     doc = {
         "actualizado": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S"),
         "eleccion": eleccion,
         "anio": anio,
-        "referencia": referencia,
+        "referencia": referencia,      # elección base del swing/relleno (misma dignidad)
+        "orden_carga": orden,          # orden de carga simulado (p.ej. prioridad2021)
         "simulado": bool(simulado),
         "metodo_principal": metodo,
         "escrutado_pct": None,

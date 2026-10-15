@@ -23,7 +23,9 @@ METODO = "v1"                     # v1 (relleno jerárquico) | jerarquico (Schte
 # --- Fuente de datos ---
 FUENTE = "replay"                 # replay | azure | portal
 FRACCION_REPLAY = 0.35            # % de mesas escrutadas en el replay
-ORDEN_REPLAY = "aleatorio"        # aleatorio | directo | inverso
+# Orden de carga simulado: prioridad2021 (orden geográfico real de 2021) | aleatorio |
+# directo | inverso.
+ORDEN_REPLAY = "prioridad2021"
 
 # --- Publicación ---
 SALIDA_WEB = "web/datos_web.json"

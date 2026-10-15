@@ -38,6 +38,11 @@ import matplotlib.pyplot as plt
 MIN_SHARE = 1.5      # % mínimo (en algún año) para que una familia sea bloque propio
 MAX_BLOQUES = 8
 
+# "LOCAL" no es un partido: es un cajón con muchos movimientos locales distintos.
+# No puede ser un bloque de la matriz → se manda a "OTROS" (junto con RESTO/OTRO).
+NO_PARTIDO = {"LOCAL", "OTRO", "OTROS", "RESTO", ""}
+OTROS = "OTROS"
+
 
 def _loc3_de4(s):
     p = s.astype(str).str.split("-")
@@ -90,6 +95,7 @@ def _bloques(dignidad):
     T["max"] = T.max(axis=1)
     share = 100 * T["max"] / T["max"].sum()
     fams = share[share >= MIN_SHARE].sort_values(ascending=False).index.tolist()
+    fams = [f for f in fams if f not in NO_PARTIDO]   # LOCAL/OTROS no son bloques
     return fams[:MAX_BLOQUES]
 
 
@@ -97,10 +103,10 @@ def cargar(dignidad, anio, bloques, con_nov=True):
     v = pd.read_csv(rd.ruta(f"mesas/parr_partido_{dignidad}_{anio}.csv.gz"), dtype=str)
     v["votos"] = v["votos"].astype(int)
     v["familia"] = v["partido"].map(familia)
-    v["familia"] = v["familia"].where(v["familia"].isin(bloques), "RESTO")
+    v["familia"] = v["familia"].where(v["familia"].isin(bloques), OTROS)
     t = v.pivot_table(index="loc_id", columns="familia", values="votos",
                       aggfunc="sum", fill_value=0)
-    cols = bloques + ["RESTO"] + (["NOV"] if con_nov else [])
+    cols = bloques + [OTROS] + (["NOV"] if con_nov else [])
     if con_nov:
         nv = _nov(anio)
         t["NOV"] = nv.reindex(t.index).fillna(0) if nv is not None else 0.0
@@ -126,7 +132,7 @@ def heatmap(theta, origen, destino, titulo, path):
 def analizar(dignidad):
     bloques = _bloques(dignidad)
     con_nov = _nov(2019) is not None and _nov(2023) is not None
-    origen = bloques + ["RESTO"] + (["NOV"] if con_nov else [])
+    origen = bloques + [OTROS] + (["NOV"] if con_nov else [])
     destino = origen[:]
     t19 = cargar(dignidad, 2019, bloques, con_nov)
     t23 = cargar(dignidad, 2023, bloques, con_nov)

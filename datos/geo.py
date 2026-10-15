@@ -248,6 +248,26 @@ def _resolver_zonas(gj):
     return resueltos
 
 
+def _mascara(prov_out, tol=0.02):
+    """GeoJSON 'mundo menos Ecuador' (polígono con agujero): tapa los países vecinos."""
+    import shapely
+    from shapely.geometry import box, shape, mapping
+
+    def _union(geoms):
+        if hasattr(shapely, "union_all"):
+            return shapely.union_all(geoms)
+        from shapely.ops import unary_union
+        return unary_union(geoms)
+
+    mundo = box(-180, -89, 180, 89)
+    ec = _union([shape(f["geometry"]).buffer(0) for f in prov_out["features"]])
+    ec = ec.simplify(tol, preserve_topology=True)
+    resto = mundo.difference(ec)
+    return {"type": "FeatureCollection",
+            "features": [{"type": "Feature", "properties": {"tipo": "resto"},
+                          "geometry": _round_coords(mapping(resto))}]}
+
+
 def preparar(no_descargar=False):
     gj_p = _leer("provinces", no_descargar)
     gj_c = _leer("cantons", no_descargar)
@@ -270,12 +290,17 @@ def preparar(no_descargar=False):
     prov_out = _simplificar(prov_out, SIMPLIFY["provinces"])
     gj_c = _simplificar(gj_c, SIMPLIFY["cantons"])
 
+    # máscara: mundo menos Ecuador, para tapar los países vecinos en los mapas
+    mask = _mascara(prov_out)
+
     d = os.path.join(rd.REPO, "web")
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "provincias.geojson"), "w", encoding="utf-8") as f:
         json.dump(prov_out, f, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(d, "cantones.geojson"), "w", encoding="utf-8") as f:
         json.dump(gj_c, f, ensure_ascii=False, separators=(",", ":"))
+    with open(os.path.join(d, "mascara.geojson"), "w", encoding="utf-8") as f:
+        json.dump(mask, f, ensure_ascii=False, separators=(",", ":"))
 
     n_c = len(gj_c["features"])
     zonas = [(f["properties"]["nombre"], f["properties"].get("fusionado_en"))

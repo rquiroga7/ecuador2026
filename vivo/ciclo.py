@@ -108,7 +108,8 @@ def _normalizar_archivos(archivos, dignidades):
 
 # ---------------------------------------------------------------------------
 def correr(fuente=None, anio=None, referencia=None, fraccion=None, orden=None,
-           metodo=None, salida=None, publicar=None, ruta_azure="", workers=12):
+           metodo=None, salida=None, publicar=None, ruta_azure="", workers=12,
+           forense=True):
     fuente = fuente or cfg.FUENTE
     anio = anio or cfg.ANIO_ELECCION
     referencia = referencia or cfg.ANIO_REFERENCIA
@@ -134,9 +135,19 @@ def correr(fuente=None, anio=None, referencia=None, fraccion=None, orden=None,
     destino = salida or os.path.join(rd.REPO, cfg.SALIDA_WEB)
     eleccion = cfg.ELECCION if anio == cfg.ANIO_ELECCION else \
         f"Seccionales Ecuador {anio} (prueba con referencia {referencia})"
-    return proyectar.emitir(snaps, refs, metodo=metodo, eleccion=eleccion,
-                            anio=anio, referencia=referencia, destino=destino,
-                            simulado=(fuente == "replay"))
+    doc = proyectar.emitir(snaps, refs, metodo=metodo, eleccion=eleccion,
+                           anio=anio, referencia=referencia, destino=destino,
+                           simulado=(fuente == "replay"),
+                           orden=(orden if fuente == "replay" else None))
+
+    if forense:
+        try:
+            from forense import ranking as frac
+            frac.exportar_web(digs=tuple(d for d in dig if d in snaps), anio=anio,
+                              snaps=snaps)
+        except Exception as e:
+            print(f"[!] forense: {e}")
+    return doc
 
 
 def publicar_web(destino=None):
@@ -180,13 +191,15 @@ def main():
     ap.add_argument("--ruta-azure", default="")
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--publicar", action="store_true")
+    ap.add_argument("--sin-forense", action="store_true",
+                    help="no recalcular el ranking forense de mesas")
     ap.add_argument("--loop", action="store_true")
     ap.add_argument("--intervalo", type=float, default=60.0)
     a = ap.parse_args()
 
     while True:
         correr(a.fuente, a.anio, a.referencia, a.fraccion, a.orden, a.metodo,
-               a.salida, a.ruta_azure, a.workers)
+               a.salida, a.ruta_azure, a.workers, forense=not a.sin_forense)
         if a.publicar or cfg.PUBLICAR:
             publicar_web(a.salida)
         if not a.loop:

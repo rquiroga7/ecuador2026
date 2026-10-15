@@ -841,3 +841,31 @@ Une **captura → instantánea → proyección → publicación** en un comando,
 por git o HTTP (reusa `publicar_rodri`). Probado end-to-end con `replay`
 (`--anio 2023 --referencia 2019 --fraccion 0.30`): 23 provincias y 221 cantones,
 proyección nacional que converge al final.
+
+### 16.6 Pestaña de inferencia ecológica y aclaración de "referencia"
+- El dashboard tiene una 4.ª pestaña **Inferencia ecológica**: selector de par
+  (Prefecto 2019→2023, Alcalde 2019→2023, Presidencial 2021→2025) y la **matriz de
+  transición** θ[j,k] (heatmap). Los datos se exportan con `python -m inferencia.web`
+  a `web/ei.json` (desde los CSV de `...\ei\`).
+- **"referencia" ≠ orden de carga.** La *referencia/base del swing* es la elección del
+  mismo tipo del ciclo anterior (2019 para proyectar 2023; **2023 para proyectar 2026**).
+  El *orden de carga* (qué mesas entran primero) es otra cosa y puede simularse con los
+  timestamps reales de 2021 (`--orden prioridad2021`, archivo `orden_parroquia_2021.csv`).
+  El texto "referencia 2019" se **quitó** del encabezado/banner del dashboard (ese 2019
+  solo se muestra donde es pertinente: la matriz de inferencia ecológica 2019→2023 y su
+  base de proyección, que en el replay sí es 2019 porque el escrutinio simulado es 2023).
+- **Otros países / máscara:** `datos/geo.py` genera también `web/mascara.geojson`
+  (mundo menos Ecuador) y el dashboard la pinta en gris bajo las provincias/cantones; el
+  mapa de prefecturas hace `fitBounds` al Ecuador continental (Galápagos, sin prefecto,
+  se excluye del encuadre).
+
+### 16.7 Pestaña forense (mesas a fiscalizar) y export
+- `forense/ranking.py` ahora etiqueta, por mesa, la **sospecha gatillada**
+  (`share_canton`, `share_parroquia`, `digitos_0_5`, `votantes_altos`, `blanco_nulo_bajo`,
+  `sobre_tope`) además del `score`, `q` (FDR) y `prioridad`.
+- `python -m forense.ranking --web` exporta `web/forense.json` (prefecto y alcalde, 500
+  mesas cada uno) con **provincia/cantón/parroquia** resueltos por catálogo.
+- El dashboard tiene la 5.ª pestaña **Forense (mesas)**: tabla ordenada de mayor a menor,
+  con **código de color** por prioridad (Alta/Media/Baja) y la **sospecha gatillada** en
+  cada fila, más un botón **Exportar CSV** (`mesas_sospechosas_<dignidad>.csv`).
+  Recuerda: el score **prioriza**, no prueba fraude.

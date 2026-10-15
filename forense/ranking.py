@@ -20,6 +20,7 @@ Uso:
 import os
 import sys
 import csv
+import json
 import math
 import argparse
 
@@ -85,6 +86,60 @@ def prioridad(q, score):
     return "Baja"
 
 
+# Etiqueta legible de cada señal (la "sospecha gatillada").
+SENAL_TXT = {
+    "share_canton": "Share del líder muy distinto al del cantón",
+    "share_parroquia": "Share del líder muy distinto al de la parroquia",
+    "digitos_0_5": "Exceso de conteos terminados en 0/5 (posible redondeo)",
+    "votantes_altos": "Votantes (emitidos) muy por encima del cantón (posible ballot stuffing)",
+    "blanco_nulo_bajo": "Blancos/nulos anormalmente bajos (posible relleno de válidos)",
+    "sobre_tope": "Emitidos por encima del máximo razonable por junta",
+}
+
+
+def _senales_de(row, thr=3.0):
+    """Señales gatilladas en la mesa (|z|≥thr o tope>0)."""
+    tags = []
+    for col, key in (("z_share", "share_canton"), ("z_parr", "share_parroquia")):
+        v = getattr(row, col, None)
+        if v is not None and np.isfinite(v) and abs(v) >= thr:
+            tags.append(key)
+    v = getattr(row, "z_c05", None)
+    if v is not None and np.isfinite(v) and v >= thr:
+        tags.append("digitos_0_5")
+    v = getattr(row, "z_emit", None)
+    if v is not None and np.isfinite(v) and v >= thr:
+        tags.append("votantes_altos")
+    v = getattr(row, "z_bn", None)
+    if v is not None and np.isfinite(v) and v <= -thr:
+        tags.append("blanco_nulo_bajo")
+    v = getattr(row, "tope", 0)
+    if v is not None and np.isfinite(v) and v > 0:
+        tags.append("sobre_tope")
+    return tags or ["score_compuesto"]
+
+
+def _nombres():
+    """Cod -> nombre de provincia/cantón/parroquia (catálogos CNE)."""
+    out = {"prov": {}, "canton": {}, "parr": {}}
+    p = rd.ruta("catalogo/provincia.csv.gz")
+    if os.path.exists(p):
+        d = pd.read_csv(p, dtype=str)
+        out["prov"] = dict(zip(d["COD_PROVINCIA"].str.zfill(2),
+                              d["NOM_PROVINCIA"].str.strip()))
+    p = rd.ruta("catalogo/canton.csv.gz")
+    if os.path.exists(p):
+        d = pd.read_csv(p, dtype=str)
+        out["canton"] = dict(zip(d["COD_CANTON"].str.zfill(3),
+                                 d["NOM_CANTON"].str.strip()))
+    p = rd.ruta("catalogo/parroquia.csv.gz")
+    if os.path.exists(p):
+        d = pd.read_csv(p, dtype=str)
+        k = d["COD_CANTON"].str.zfill(3) + "|" + d["COD_PARROQUIA"].str.zfill(4)
+        out["parr"] = dict(zip(k, d["NOM_PARROQUIA"].str.strip()))
+    return out
+
+
 def cargar_score(dig="prefecto", anio=2023):
     p = rd.ruta(f"forense/score_mesas_{dig}_{anio}.csv.gz")
     if os.path.exists(p):
@@ -92,8 +147,24 @@ def cargar_score(dig="prefecto", anio=2023):
     return juntas.score(juntas.cargar(dig, anio))
 
 
-def ranking(dig="prefecto", anio=2023, min_emitidos=20):
-    df = cargar_score(dig, anio)
+def _wide_desde_snapshot(snap):
+    """Convierte una instantánea (tidy por mesa) al formato de `juntas.score`:
+    mesa × bloque + emitidos/b/n. Permite correr el forense sobre el escrutinio vivo."""
+    from modelo.bloques import bloque_principal
+    v = snap["votos"].copy()
+    if "bloque" not in v.columns:
+        v["bloque"] = v["lista"].map(bloque_principal) if "lista" in v.columns else "ZZZ"
+    wide = v.pivot_table(index=["mesa_id", "loc_id"], columns="bloque", values="votos",
+                         fill_value=0, aggfunc="sum").reset_index()
+    m = snap["totales"][["mesa_id", "votos_emitidos", "votos_b", "votos_n"]]
+    m = m.drop_duplicates("mesa_id")
+    wide = wide.merge(m, on="mesa_id", how="left")
+    return wide.rename(columns={"votos_emitidos": "emitidos", "votos_b": "b",
+                                "votos_n": "n"})
+
+
+def ranking(dig="prefecto", anio=2023, min_emitidos=20, wide=None):
+    df = juntas.score(wide) if wide is not None else cargar_score(dig, anio)
     for c in SENALES + ["emitidos", "share_lider", "bn_rate", "frac_c05", "score"]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -110,6 +181,7 @@ def ranking(dig="prefecto", anio=2023, min_emitidos=20):
                     (1 + np.clip(-np.log10(df["q_bh"].clip(lower=1e-12)), 0, 8)))
     df = df.sort_values("indice", ascending=False).reset_index(drop=True)
     df["rank"] = np.arange(1, len(df) + 1)
+    df["sospechas"] = [_senales_de(r) for r in df.itertuples()]
     return df
 
 
@@ -124,6 +196,59 @@ def _resumen(df):
     }
 
 
+def exportar_web(digs=("prefecto", "alcalde"), anio=2023, top=500,
+                 min_emitidos=20, destino=None, snaps=None):
+    """Escribe `web/forense.json` con el ranking de mesas sospechosas y su sospecha.
+
+    Si se pasa `snaps` ({dignidad: instantánea}), el forense corre sobre ese
+    escrutinio (parcial) en vez de las bases 2023 en disco.
+    """
+    nm = _nombres()
+    por = {}
+    for dig in digs:
+        wide = None
+        if snaps is not None and dig in snaps:
+            try:
+                wide = _wide_desde_snapshot(snaps[dig])
+            except Exception as e:
+                print(f"[!] forense {dig}: no pude armar la matriz ({e})")
+        df = ranking(dig, anio, min_emitidos=min_emitidos, wide=wide)
+        items = []
+        for r in df.head(top).itertuples():
+            parts = str(r.loc_id).split("-")
+            cod_prov = parts[0] if len(parts) > 0 else ""
+            cod_cant = parts[1] if len(parts) > 1 else ""
+            cod_parr = parts[3] if len(parts) > 3 else ""
+            items.append({
+                "rank": int(r.rank),
+                "mesa_id": str(r.mesa_id),
+                "provincia": nm["prov"].get(cod_prov, cod_prov),
+                "canton": nm["canton"].get(cod_cant, cod_cant),
+                "parroquia": nm["parr"].get(f"{cod_cant}|{cod_parr}", ""),
+                "emitidos": int(r.emitidos),
+                "share_lider": round(float(r.share_lider), 3),
+                "score": round(float(r.score), 2),
+                "q": float(f"{r.q_bh:.2e}") if np.isfinite(r.q_bh) else None,
+                "prioridad": r.prioridad,
+                "sospechas": list(r.sospechas),
+                "detalle": {k: (None if getattr(r, k, None) is None
+                                or not np.isfinite(getattr(r, k, np.nan)) else
+                                round(float(getattr(r, k)), 2))
+                            for k in ["z_share", "z_parr", "z_c05", "z_emit", "z_bn"]},
+            })
+        por[dig] = {"items": items, "resumen": _resumen(df)}
+    doc = {"generado": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+           "anio": anio, "senal_txt": SENAL_TXT, "por_dignidad": por}
+    p = destino or os.path.join(rd.REPO, "web", "forense.json")
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False, separators=(",", ":"))
+    print(f"[OK] {p} | " + " | ".join(
+        f"{d}: {len(por[d]['items'])} mesas (alta={por[d]['resumen']['prioridad_alta']})"
+        for d in por))
+    return doc
+
+
 def main():
     ap = argparse.ArgumentParser(description="Ranking forense de mesas a fiscalizar.")
     ap.add_argument("dignidad", nargs="?", default="prefecto")
@@ -131,7 +256,14 @@ def main():
     ap.add_argument("--top", type=int, default=20)
     ap.add_argument("--min-emitidos", type=int, default=20,
                     help="descarta mesas con menos votantes (ruido)")
+    ap.add_argument("--web", action="store_true",
+                    help="exporta web/forense.json (prefecto y alcalde)")
     args = ap.parse_args()
+
+    if args.web:
+        exportar_web(("prefecto", "alcalde"), args.anio, top=max(args.top, 500),
+                     min_emitidos=args.min_emitidos)
+        return
 
     df = ranking(args.dignidad, args.anio, min_emitidos=args.min_emitidos)
     res = _resumen(df)

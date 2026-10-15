@@ -68,8 +68,33 @@ def cargar_base(dignidad, anio=2023):
 # ---------------------------------------------------------------------------
 # Replay: órdenes de carga simulados
 # ---------------------------------------------------------------------------
+def _prioridad_2021(mesas):
+    """Orden de carga real observado en la captura de Gaona (2021): por parroquia,
+    minuto medio de publicación. Devuelve índices ordenados (o None si no hay archivo)."""
+    p = rd.ruta("backtest/orden_parroquia_2021.csv")
+    if not os.path.exists(p):
+        return None
+    o = pd.read_csv(p)
+    d = dict(zip(o["loc_id"], o["min_medio"]))
+
+    def loc3(m):
+        q = str(m).split("-")
+        return q[0] + "-" + q[1] + "-" + q[3] if len(q) >= 4 else str(m)
+
+    pr = np.array([d.get(loc3(m), np.nan) for m in mesas], float)
+    if np.isnan(pr).all():
+        return None
+    pr = np.where(np.isnan(pr), np.nanmedian(pr), pr)
+    return list(np.argsort(pr, kind="stable"))
+
+
 def _orden(mesas, modo, rng):
     U = len(mesas)
+    if modo in ("prioridad2021", "prioridad_2021", "prioridad"):
+        o = _prioridad_2021(mesas)
+        if o is not None:
+            return o
+        print("[i] sin orden_parroquia_2021.csv: uso aleatorio")
     if modo == "aleatorio":
         return list(rng.permutation(U))
     if modo == "directo":
