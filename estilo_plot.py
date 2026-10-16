@@ -9,13 +9,13 @@ Añade una nota metodológica breve en español + autor (+ repositorio, si se de
 # Poné aquí la URL del repositorio de Ecuador cuando lo crees, p. ej.
 #   REPO_URL = "https://github.com/<usuario>/ecuador2026"
 REPO_URL = ""
-AUTOR = "Por Rodrigo Quiroga"
-COLABORACION = "Trabajo realizado en colaboración con el Dr. Roberto Etchenique"
-CREDITO = f"{AUTOR}. {COLABORACION}"
+AUTORES = "Rodrigo Quiroga y Roberto Etchenique"
+AUTOR = AUTORES
+CREDITO = f"Autores: {AUTORES}"
 
 
 def pie(metodologia):
-    base = f"{metodologia}\n{AUTOR}"
+    base = f"{metodologia}\n{CREDITO}"
     if REPO_URL:
         base += f" · ver {REPO_URL}"
     return base

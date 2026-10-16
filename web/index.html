@@ -60,6 +60,30 @@
   .cand { font-size:.75rem; padding:.1rem .45rem; border-radius:6px; color:#fff; }
   .banner { background:#ffe8cc; color:#7a3b00; padding:.55rem .8rem; border-radius:8px;
             margin-bottom:1rem; font-size:.85rem; }
+  #for_body tr { cursor:pointer; }
+  #for_body tr:hover { background:rgba(127,127,127,.08); }
+  #for_tabla td:last-child { white-space:normal; min-width:220px; }
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex;
+           align-items:center; justify-content:center; z-index:2000; padding:1rem; }
+  .modal-card { background:var(--card); border:1px solid var(--line); border-radius:12px;
+                max-width:640px; width:100%; max-height:88vh; overflow:auto;
+                padding:1rem 1.2rem; box-shadow:0 12px 40px rgba(0,0,0,.35); }
+  .modal-card h2 { margin:0 0 .2rem; }
+  .modal-card .cerrar { float:right; border:0; background:transparent; color:var(--muted);
+                        font-size:1.4rem; line-height:1; cursor:pointer; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:.25rem .8rem;
+        font-size:.85rem; margin:.7rem 0; }
+  .kv dt { color:var(--muted); }
+  .kv dd { margin:0; font-weight:600; }
+  .fila-fam { display:grid; grid-template-columns:3.2rem 1fr auto; gap:.5rem;
+              align-items:center; font-size:.8rem; margin:.15rem 0; }
+  .fila-fam .mini { height:10px; border-radius:5px; background:var(--line);
+                    overflow:hidden; }
+  .fila-fam .mini span { display:block; height:100%; }
+  .zgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(90px,1fr));
+           gap:.4rem; margin-top:.4rem; }
+  .zbox { background:rgba(127,127,127,.08); border-radius:8px; padding:.4rem .5rem; }
+  .zbox .z { font-weight:700; font-size:.95rem; }
 </style>
 </head>
 <body>
@@ -173,20 +197,34 @@
         <span class="pill" style="background:#f08c00;color:#fff">Media</span> q&lt;0,05 ·
         <span class="pill" style="background:#adb5bd;color:#fff">Baja</span> resto.
         Esto <b>prioriza</b> la fiscalización; <b>no</b> prueba fraude.
+        El <b>share</b> se calibra por la heterogeneidad del cantón/parroquia (mediana ±
+        4·IQR) y la <b>participación</b> por mesa se estima del distributivo de recintos
+        del CNE (electores del recinto ÷ n.º de juntas).
       </div>
       <div id="for_leyenda" class="small" style="margin-bottom:.6rem"></div>
       <div style="overflow-x:auto;max-height:72vh">
         <table id="for_tabla">
           <thead><tr>
             <th class="num">#</th><th>Provincia</th><th>Cantón</th><th>Parroquia</th>
-            <th>Mesa</th><th class="num">Votantes</th><th class="num">Score</th>
+            <th>Mesa</th><th>Ganador mesa</th><th class="num">Votantes</th><th class="num">Score</th>
             <th class="num">q</th><th>Prioridad</th><th>Sospecha gatillada</th>
           </tr></thead>
           <tbody id="for_body"></tbody>
         </table>
       </div>
+      <div class="small" style="margin-top:.4rem">
+        Hacé clic en una mesa para ver el detalle (votos por partido, localidad y señales).
+      </div>
     </div>
   </section>
+
+  <!-- Modal de detalle de mesa (forense) -->
+  <div id="for_modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <button class="cerrar" id="for_modal_cerrar" aria-label="Cerrar">&times;</button>
+      <div id="for_modal_body"></div>
+    </div>
+  </div>
 
   <footer>
     Proyección no oficial con fines de análisis · método <b>v1</b> (relleno jerárquico
@@ -362,24 +400,31 @@ function pintarEI() {
   $("ei_tabla").innerHTML = `<table><thead>${head}</thead><tbody>${rows}</tbody></table>`;
 }
 // ---------- Forense (mesas) ----------
-let forData = null;
+let forData = null, forItems = [];
 const colorPrior = (p) => p === "Alta" ? "#b10026" : p === "Media" ? "#f08c00" : "#adb5bd";
 const qTxt = (q) => q == null ? "" : (q < 0.001 ? q.toExponential(1) : q.toFixed(3));
+const ganTxt = (it) => it.ganador_mesa == null ? "–"
+  : it.ganador_mesa + (it.margen_mesa == null ? "" : " +" + Number(it.margen_mesa).toFixed(1));
 function pintarForense() {
   const dig = $("sel_for").value || "prefecto";
   const blk = ((forData && forData.por_dignidad) || {})[dig] || { items: [], resumen: {} };
+  forItems = blk.items || [];
   const r = blk.resumen || {};
   $("for_resumen").textContent = `${r.mesas || 0} mesas · Alta ${r.prioridad_alta || 0} · ` +
     `Media ${r.prioridad_media || 0} · q<0.05 ${r["q<0.05"] || 0}`;
   const txt = (forData && forData.senal_txt) || {};
-  $("for_body").innerHTML = blk.items.map((it) => {
+  $("for_body").innerHTML = forItems.map((it, i) => {
     const col = colorPrior(it.prioridad);
     const tags = it.sospechas.map((s) =>
       `<span class="pill" style="background:${col};color:#fff;margin:.1rem">${txt[s] || s}</span>`).join(" ");
-    return `<tr style="border-left:4px solid ${col}">
+    const gan = it.ganador_mesa == null ? '<span class="small">–</span>'
+      : `<span class="cand" style="background:${colorDe(it.ganador_mesa)}">${ganTxt(it)}</span>` +
+        `<div class="barlbl">vs ${it.segundo_mesa || "–"}</div>`;
+    return `<tr data-i="${i}" title="Clic para ver el detalle de la mesa" style="border-left:4px solid ${col}">
       <td class="num">${it.rank}</td>
       <td>${it.provincia}</td><td>${it.canton}</td><td class="small">${it.parroquia || ""}</td>
       <td class="small">${it.mesa_id}</td>
+      <td>${gan}</td>
       <td class="num">${fmtNum(it.emitidos)}</td>
       <td class="num" style="color:${col};font-weight:700">${it.score}</td>
       <td class="num small">${qTxt(it.q)}</td>
@@ -388,6 +433,73 @@ function pintarForense() {
     </tr>`;
   }).join("");
 }
+const SENAL_LBL = { z_share: "Share vs cantón", z_parr: "Share vs parroquia",
+  z_c05: "Dígitos 0/5", z_part: "Participación", z_bn: "Blanco/nulo" };
+const ZSIG = { z_share: "share_canton", z_parr: "share_parroquia", z_c05: "digitos_0_5",
+  z_part: "participacion_alta", z_bn: "blanco_nulo_bajo" };
+function abrirDetalleForense(it) {
+  if (!it) return;
+  const col = colorPrior(it.prioridad);
+  const txt = (forData && forData.senal_txt) || {};
+  const sos = it.sospechas || [];
+  const m = it.medidas || {};
+  const p0 = (x) => x == null ? "–" : Math.round(x) + "%";         // ya en %
+  const p1 = (x) => x == null ? "–" : (100 * x).toFixed(1) + "%";  // fracción 0-1
+  const RED = "color:#b10026;font-weight:700";
+  const rc = (b) => b ? ` style="${RED}"` : "";
+  const votos = it.votos_familia || {};
+  const tot = Object.values(votos).reduce((a, b) => a + b, 0) || 1;
+  const filas = Object.entries(votos).map(([f, v]) =>
+    `<div class="fila-fam">
+       <span>${f}</span>
+       <span class="mini"><span style="width:${(100 * v / tot).toFixed(1)}%;background:${colorDe(f)}"></span></span>
+       <span class="num">${fmtNum(v)}</span>
+     </div>`).join("") || '<div class="small">sin votos por partido</div>';
+  const z = it.detalle || {};
+  const zbox = Object.entries(z).map(([k, v]) =>
+    `<div class="zbox"><div class="small">${SENAL_LBL[k] || k}</div>
+       <div class="z"${rc(sos.includes(ZSIG[k]))}>${v == null ? "–" : (v > 0 ? "+" : "") + v}</div></div>`).join("");
+  const tags = sos.map((s) =>
+    `<span class="pill" style="background:${col};color:#fff;margin:.1rem">${txt[s] || s}</span>`).join(" ");
+  $("for_modal_body").innerHTML = `
+    <h2>Mesa ${it.mesa_id}</h2>
+    <div class="small">${it.provincia} · ${it.canton}${it.parroquia ? " · " + it.parroquia : ""}
+      · <code>${it.loc_id || ""}</code></div>
+    <div style="margin:.6rem 0">
+      <span class="cand" style="background:${colorDe(it.ganador_mesa)}">${ganTxt(it)}</span>
+      <span class="small">· ganador de la mesa (vs ${it.segundo_mesa || "–"})</span>
+    </div>
+    <dl class="kv">
+      <dt>Votantes (emitidos)</dt><dd${rc(sos.includes("sobre_tope"))}>${fmtNum(it.emitidos)}</dd>
+      <dt>Electores (est.)</dt><dd>${fmtNum(it.electores_est)}</dd>
+      <dt>Participación (mesa)</dt>
+        <dd${rc(sos.includes("participacion_alta"))}>${p0(it.participacion)}
+          <span class="small">(cantón ${p0(m.participacion_canton)})</span></dd>
+      <dt>Participación parroquia</dt><dd>${p0(it.participacion_parroquia)}</dd>
+      <dt>Share del líder</dt>
+        <dd${rc(sos.includes("share_canton") || sos.includes("share_parroquia"))}>${p1(it.share_lider)}
+          <span class="small">(cantón ${p1(m.share_canton)}; esperado ${p1(m.share_lo_canton)}–${p1(m.share_hi_canton)})</span></dd>
+      <dt>Blancos + nulos</dt>
+        <dd${rc(sos.includes("blanco_nulo_bajo"))}>${p1(m.bn_rate)}
+          <span class="small">(cantón ${p1(m.bn_canton)})</span></dd>
+      <dt>Conteos term. 0/5</dt>
+        <dd${rc(sos.includes("digitos_0_5"))}>${p1(m.frac_c05)}
+          <span class="small">(cantón ${p1(m.c05_canton)})</span></dd>
+      <dt>Score</dt><dd style="color:${col}">${it.score}</dd>
+      <dt>q (FDR)</dt><dd>${qTxt(it.q)}</dd>
+      <dt>Prioridad</dt><dd><span class="pill" style="background:${col};color:#fff">${it.prioridad}</span></dd>
+    </dl>
+    <h2 style="font-size:.9rem;margin-top:.8rem">Votos por partido</h2>
+    ${filas}
+    <h2 style="font-size:.9rem;margin-top:.9rem">Señales (z contra el cantón)</h2>
+    <div class="zgrid">${zbox}</div>
+    <h2 style="font-size:.9rem;margin-top:.9rem">Sospechas gatilladas</h2>
+    <div>${tags || '<span class="small">–</span>'}</div>
+    <p class="small" style="margin-top:.8rem">El score <b>prioriza</b> la fiscalización; <b>no</b>
+      prueba fraude.</p>`;
+  $("for_modal").classList.remove("hidden");
+}
+function cerrarDetalleForense() { $("for_modal").classList.add("hidden"); }
 async function cargarForense() {
   if (forData) { pintarForense(); return; }
   try { forData = await (await fetch("forense.json", { cache: "no-store" })).json(); }
@@ -405,12 +517,15 @@ function exportarForense() {
   const blk = ((forData && forData.por_dignidad) || {})[dig] || { items: [] };
   const txt = (forData && forData.senal_txt) || {};
   const cols = ["rank", "prioridad", "provincia", "canton", "parroquia", "mesa_id",
+                "ganador_mesa", "segundo_mesa", "margen_mesa",
                 "emitidos", "share_lider", "score", "q", "sospechas"];
   const q = (s) => `"${String(s == null ? "" : s).replace(/"/g, "'")}"`;
   const lines = [cols.join(",")];
   for (const it of blk.items) {
     lines.push([it.rank, it.prioridad, q(it.provincia), q(it.canton), q(it.parroquia),
-      it.mesa_id, it.emitidos, it.share_lider, it.score, it.q == null ? "" : it.q,
+      it.mesa_id, q(it.ganador_mesa), q(it.segundo_mesa),
+      it.margen_mesa == null ? "" : it.margen_mesa,
+      it.emitidos, it.share_lider, it.score, it.q == null ? "" : it.q,
       q(it.sospechas.map((s) => txt[s] || s).join("; "))].join(","));
   }
   const blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -573,6 +688,15 @@ $("sel_prov").addEventListener("change", pintarDetalle);
 $("sel_prov_alc").addEventListener("change", () => { pintarAlcaldias(); pintarMapaAlc(); });
 $("sel_ei").addEventListener("change", pintarEI);
 $("sel_for").addEventListener("change", pintarForense);
+$("for_body").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr[data-i]");
+  if (tr) abrirDetalleForense(forItems[+tr.dataset.i]);
+});
+$("for_modal_cerrar").addEventListener("click", cerrarDetalleForense);
+$("for_modal").addEventListener("click", (e) => {
+  if (e.target === $("for_modal")) cerrarDetalleForense();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") cerrarDetalleForense(); });
 $("btn_csv").addEventListener("click", exportarForense);
 
 refrescar();

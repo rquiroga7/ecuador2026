@@ -43,6 +43,34 @@ def electores_parroquia(anio):
     return df.groupby("loc_id")["ELECTORES"].sum()
 
 
+# JUNTA_SEXO en el padrón del CNE: masculino / femenino. `pandas.read_spss` lo entrega
+# como categoría con etiquetas ("MASCULINO"/"FEMENINO"), pero toleramos el código 1/2.
+def _sexo_padron(v):
+    s = str(v).strip().upper()
+    if s in ("M", "MASCULINO", "1", "1.0"):
+        return "M"
+    if s in ("F", "FEMENINO", "2", "2.0"):
+        return "F"
+    return None
+
+
+def electores_parroquia_sexo(anio):
+    """Serie MultiIndex (loc_id, sexo) -> electores habilitados.
+
+    Permite repartir el padrón parroquial entre las mesas de cada sexo (las mesas de
+    una junta receptora son de tamaño ~constante)."""
+    ruta = rd.ruta(f"raw/{ARCHIVOS[anio]}")
+    if not os.path.exists(ruta):
+        ruta = os.path.join(rd.ruta_dir("raw"), os.path.basename(ARCHIVOS[anio]))
+    df = pd.read_spss(ruta)
+    df["loc_id"] = (_zfill_int(df["PROVINCIA_CODIGO"], 2) + "-"
+                    + _zfill_int(df["CANTON_CODIGO"], 3) + "-"
+                    + _zfill_int(df["PARROQUIA_CODIGO"], 4))
+    df["sexo"] = df["JUNTA_SEXO"].map(_sexo_padron)
+    df["ELECTORES"] = pd.to_numeric(df["ELECTORES"], errors="coerce").fillna(0)
+    return df.groupby(["loc_id", "sexo"])["ELECTORES"].sum()
+
+
 def _loc3(loc4):
     p = loc4.astype(str).str.split("-")
     return p.str[0] + "-" + p.str[1] + "-" + p.str[3]

@@ -10,6 +10,7 @@ Productos (D:\\ecuador2026_data\\backtest\\):
     carga_2021_nacional.csv     curva: tiempo -> % de juntas y % de votos
     sesgo_2021_provincia.csv    tiempo medio de publicación y share por provincia
     orden_parroquia_2021.csv    parroquia -> minuto medio de publicación (para transferir)
+    orden_junta_2021.csv        junta -> minuto medio de publicación (orden real de carga)
     resumen_publicacion_2021.json
 
 Uso:
@@ -98,6 +99,31 @@ def orden_parroquia(g):
     return o.sort_values("min_medio").reset_index(drop=True)
 
 
+def _junta_key(df):
+    """Clave de mesa `prov-cant-parroquia-zona-junta-sexo` (sin circunscripción).
+
+    Coincide con la clave de los dumps por mesa del CNE salvo el campo
+    circunscripción (que en 2021 y 2023 no distingue juntas): la usamos para mapear
+    el orden real de publicación de 2021 sobre las mesas de cualquier otro año.
+    """
+    z = lambda c, n: pd.to_numeric(df[c], errors="coerce").astype("Int64").astype(str).str.zfill(n)
+    return (z("cod_prov", 2) + "-" + z("cod_cant", 3) + "-"
+            + z("parroquia", 4) + "-" + z("recinto", 2) + "-"
+            + z("junta", 3) + "-" + df["junta_genero"].astype(str).str.upper())
+
+
+def orden_junta(g):
+    """Mesa -> minuto medio de publicación (2021), para transferir el orden de carga
+    real a las mesas de otro año."""
+    t0 = g["updated"].min()
+    g = g.copy()
+    g["min"] = (g["updated"] - t0).dt.total_seconds() / 60.0
+    g["key"] = _junta_key(g)
+    o = g.groupby("key", as_index=False).agg(
+        juntas=("votos", "size"), votos=("votos", "sum"), min_medio=("min", "mean"))
+    return o.sort_values("min_medio").reset_index(drop=True)
+
+
 def _corr(x, y):
     m = x.notna() & y.notna()
     if m.sum() < 10 or (x[m].std() == 0) or (y[m].std() == 0):
@@ -111,11 +137,13 @@ def main():
     cur = curva(g)
     gprov, por_prov = sesgo(g)
     orden = orden_parroquia(g)
+    ojunta = orden_junta(g)
 
     out = rd.ruta_dir("backtest")
     cur.to_csv(os.path.join(out, "carga_2021_nacional.csv"), index=False)
     por_prov.to_csv(os.path.join(out, "sesgo_2021_provincia.csv"), index=False)
     orden.to_csv(os.path.join(out, "orden_parroquia_2021.csv"), index=False)
+    ojunta.to_csv(os.path.join(out, "orden_junta_2021.csv"), index=False)
 
     dur = float(cur["min"].max())
     # fracción de votos contados a distintos % de juntas (curva no lineal)

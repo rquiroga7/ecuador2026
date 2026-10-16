@@ -31,8 +31,9 @@ import rutas_datos as rd
 from forense import juntas
 
 # señales de una cola (mayores = más anómalo). Se excluye la firma según la dirección.
-SENALES = ["z_share", "z_parr", "z_c05", "z_emit", "z_bn", "tope"]
-DIRECCION = {"z_share": +1, "z_parr": +1, "z_c05": +1, "z_emit": +1,
+# El share usa la versión **calibrada** (exceso fuera del fence del estrato).
+SENALES = ["z_share_cal", "z_parr_cal", "z_c05", "z_part", "z_bn", "tope"]
+DIRECCION = {"z_share_cal": +1, "z_parr_cal": +1, "z_c05": +1, "z_part": +1,
              "z_bn": -1, "tope": +1}
 
 
@@ -91,25 +92,41 @@ SENAL_TXT = {
     "share_canton": "Share del líder muy distinto al del cantón",
     "share_parroquia": "Share del líder muy distinto al de la parroquia",
     "digitos_0_5": "Exceso de conteos terminados en 0/5 (posible redondeo)",
-    "votantes_altos": "Votantes (emitidos) muy por encima del cantón (posible ballot stuffing)",
+    "participacion_alta": "Participación muy por encima del cantón (posible ballot stuffing)",
     "blanco_nulo_bajo": "Blancos/nulos anormalmente bajos (posible relleno de válidos)",
     "sobre_tope": "Emitidos por encima del máximo razonable por junta",
 }
 
 
-def _senales_de(row, thr=3.0):
-    """Señales gatilladas en la mesa (|z|≥thr o tope>0)."""
+def _senales_de(row, thr=3.0, mat_share=0.15, mat_part=15.0):
+    """Señales gatilladas en la mesa (|z|≥thr o tope>0).
+
+    Para el share se exige además **materialidad** (una diferencia de al menos
+    `mat_share`, p. ej. 15 puntos) respecto de la mediana del cantón/parroquia, y para
+    la participación al menos `mat_part` puntos por encima de la mediana del cantón (o
+    >100%): una desviación estadísticamente significativa pero trivial no gatilla.
+    """
     tags = []
-    for col, key in (("z_share", "share_canton"), ("z_parr", "share_parroquia")):
+    for col, med_col, key in (("z_share_cal", "share_canton", "share_canton"),
+                              ("z_parr_cal", "share_parr", "share_parroquia")):
         v = getattr(row, col, None)
-        if v is not None and np.isfinite(v) and abs(v) >= thr:
-            tags.append(key)
+        if v is not None and np.isfinite(v) and v > 0:
+            med = getattr(row, med_col, None)
+            if med is None or not np.isfinite(med) or \
+                    abs(getattr(row, "share_lider", 0.0) - med) >= mat_share:
+                tags.append(key)
     v = getattr(row, "z_c05", None)
     if v is not None and np.isfinite(v) and v >= thr:
         tags.append("digitos_0_5")
-    v = getattr(row, "z_emit", None)
+    v = getattr(row, "z_part", None)
+    p = getattr(row, "participacion", None)
+    pc = getattr(row, "participacion_canton", None)
     if v is not None and np.isfinite(v) and v >= thr:
-        tags.append("votantes_altos")
+        material = (p is not None and np.isfinite(p) and p > 100) or \
+                   (p is not None and np.isfinite(p) and pc is not None
+                    and np.isfinite(pc) and (p - pc) >= mat_part)
+        if material:
+            tags.append("participacion_alta")
     v = getattr(row, "z_bn", None)
     if v is not None and np.isfinite(v) and v <= -thr:
         tags.append("blanco_nulo_bajo")
@@ -144,7 +161,7 @@ def cargar_score(dig="prefecto", anio=2023):
     p = rd.ruta(f"forense/score_mesas_{dig}_{anio}.csv.gz")
     if os.path.exists(p):
         return pd.read_csv(p, dtype=str)
-    return juntas.score(juntas.cargar(dig, anio))
+    return juntas.score(juntas.cargar(dig, anio), anio=anio)
 
 
 def _wide_desde_snapshot(snap):
@@ -164,7 +181,7 @@ def _wide_desde_snapshot(snap):
 
 
 def ranking(dig="prefecto", anio=2023, min_emitidos=20, wide=None):
-    df = juntas.score(wide) if wide is not None else cargar_score(dig, anio)
+    df = juntas.score(wide, anio=anio) if wide is not None else cargar_score(dig, anio)
     for c in SENALES + ["emitidos", "share_lider", "bn_rate", "frac_c05", "score"]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -196,6 +213,14 @@ def _resumen(df):
     }
 
 
+def _num(v, nd=3):
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return round(f, nd) if np.isfinite(f) else None
+
+
 def exportar_web(digs=("prefecto", "alcalde"), anio=2023, top=500,
                  min_emitidos=20, destino=None, snaps=None):
     """Escribe `web/forense.json` con el ranking de mesas sospechosas y su sospecha.
@@ -219,22 +244,57 @@ def exportar_web(digs=("prefecto", "alcalde"), anio=2023, top=500,
             cod_prov = parts[0] if len(parts) > 0 else ""
             cod_cant = parts[1] if len(parts) > 1 else ""
             cod_parr = parts[3] if len(parts) > 3 else ""
+            margen = getattr(r, "margen_mesa", np.nan)
+            votos_fam = getattr(r, "votos_familia", None)
+            if votos_fam is not None and not isinstance(votos_fam, dict):
+                votos_fam = None
+            n_est = getattr(r, "electores_est", None)
             items.append({
                 "rank": int(r.rank),
                 "mesa_id": str(r.mesa_id),
+                "loc_id": str(r.loc_id),
                 "provincia": nm["prov"].get(cod_prov, cod_prov),
                 "canton": nm["canton"].get(cod_cant, cod_cant),
                 "parroquia": nm["parr"].get(f"{cod_cant}|{cod_parr}", ""),
                 "emitidos": int(r.emitidos),
+                "blancos": int(getattr(r, "b", 0) or 0),
+                "nulos": int(getattr(r, "n", 0) or 0),
+                "electores_est": (None if n_est is None or pd.isna(n_est)
+                                  else int(n_est)),
+                "participacion": _num(getattr(r, "participacion", None), 1),
+                "participacion_parroquia": _num(
+                    getattr(r, "participacion_parroquia", None), 1),
                 "share_lider": round(float(r.share_lider), 3),
+                "ganador_mesa": getattr(r, "ganador_mesa", None),
+                "segundo_mesa": getattr(r, "segundo_mesa", None),
+                "margen_mesa": (round(float(margen), 1) if margen is not None
+                                and np.isfinite(margen) else None),
+                "votos_familia": votos_fam,
                 "score": round(float(r.score), 2),
                 "q": float(f"{r.q_bh:.2e}") if np.isfinite(r.q_bh) else None,
                 "prioridad": r.prioridad,
                 "sospechas": list(r.sospechas),
+                "medidas": {
+                    "share_lider": _num(getattr(r, "share_lider", None), 3),
+                    "share_canton": _num(getattr(r, "share_canton", None), 3),
+                    "share_parr": _num(getattr(r, "share_parr", None), 3),
+                    "share_lo_canton": _num(getattr(r, "share_lo_canton", None), 3),
+                    "share_hi_canton": _num(getattr(r, "share_hi_canton", None), 3),
+                    "share_lo_parr": _num(getattr(r, "share_lo_parr", None), 3),
+                    "share_hi_parr": _num(getattr(r, "share_hi_parr", None), 3),
+                    "participacion": _num(getattr(r, "participacion", None), 1),
+                    "participacion_canton": _num(
+                        getattr(r, "participacion_canton", None), 1),
+                    "bn_rate": _num(getattr(r, "bn_rate", None), 3),
+                    "bn_canton": _num(getattr(r, "bn_canton", None), 3),
+                    "frac_c05": _num(getattr(r, "frac_c05", None), 3),
+                    "c05_canton": _num(getattr(r, "c05_canton", None), 3),
+                    "tope": 400,
+                },
                 "detalle": {k: (None if getattr(r, k, None) is None
                                 or not np.isfinite(getattr(r, k, np.nan)) else
                                 round(float(getattr(r, k)), 2))
-                            for k in ["z_share", "z_parr", "z_c05", "z_emit", "z_bn"]},
+                            for k in ["z_share", "z_parr", "z_c05", "z_part", "z_bn"]},
             })
         por[dig] = {"items": items, "resumen": _resumen(df)}
     doc = {"generado": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),

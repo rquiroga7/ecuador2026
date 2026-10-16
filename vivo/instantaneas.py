@@ -88,8 +88,36 @@ def _prioridad_2021(mesas):
     return list(np.argsort(pr, kind="stable"))
 
 
+def _timestamp_2021(mesas):
+    """Orden de carga real observado en la captura de Gaona (2021) a nivel de **junta**:
+    minuto medio de publicación de cada mesa. Mapea por la clave
+    `prov-cant-parroquia-zona-junta-sexo` (sin circunscripción). Devuelve índices
+    ordenados (o None si no hay archivo)."""
+    p = rd.ruta("backtest/orden_junta_2021.csv")
+    if not os.path.exists(p):
+        return None
+    o = pd.read_csv(p, dtype={"key": str})
+    d = dict(zip(o["key"], o["min_medio"]))
+
+    def key(m):
+        q = str(m).split("-")
+        return "-".join([q[0], q[1], q[3], q[4], q[5], q[6]]) if len(q) >= 7 else str(m)
+
+    pr = np.array([d.get(key(m), np.nan) for m in mesas], float)
+    if np.isnan(pr).all():
+        return None
+    pr = np.where(np.isnan(pr), np.nanmedian(pr), pr)
+    return list(np.argsort(pr, kind="stable"))
+
+
 def _orden(mesas, modo, rng):
     U = len(mesas)
+    if modo in ("timestamp2021", "timestamp_2021", "timestamp"):
+        o = _timestamp_2021(mesas)
+        if o is not None:
+            return o
+        print("[i] sin orden_junta_2021.csv: uso prioridad2021")
+        modo = "prioridad2021"
     if modo in ("prioridad2021", "prioridad_2021", "prioridad"):
         o = _prioridad_2021(mesas)
         if o is not None:
@@ -262,7 +290,8 @@ def main():
     ap.add_argument("--anio", type=int, default=2023)
     ap.add_argument("--replay", action="store_true", help="genera una serie de replay")
     ap.add_argument("--orden", default="aleatorio",
-                    choices=["aleatorio", "directo", "inverso"])
+                    choices=["aleatorio", "directo", "inverso",
+                             "timestamp2021", "prioridad2021"])
     ap.add_argument("--snapshot", help="carpeta con volcados crudos a normalizar")
     args = ap.parse_args()
 

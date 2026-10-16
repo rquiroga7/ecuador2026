@@ -5,8 +5,7 @@ del **domingo 29 de noviembre de 2026** a partir del **escrutinio parcial** a ni
 **mesa (junta receptora del voto)**, y **detección de mesas anómalas** para focalizar
 la fiscalización.
 
-**Autor:** Rodrigo Quiroga
-**Colaboración:** trabajo realizado en colaboración con el **Dr. Roberto Etchenique**.
+**Autores:** Rodrigo Quiroga y Roberto Etchenique
 
 > Este repositorio parte del sistema desarrollado para la elección presidencial de
 > **Brasil 2026** (metodología de proyección de swing y backtest con la carga real).
@@ -46,8 +45,7 @@ En construcción. La conversión desde el repositorio de Brasil está en la **Fa
 
 ## Créditos
 
-Trabajo realizado por **Rodrigo Quiroga** en colaboración con el
-**Dr. Roberto Etchenique**.
+**Autores:** Rodrigo Quiroga y Roberto Etchenique
 
 La metodología de proyección (swing uniforme y *logit-swing* jerárquico) proviene del
 trabajo de **Daniel Schteingart (El Atlas / Cenital)** para Brasil.

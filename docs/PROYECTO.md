@@ -40,7 +40,7 @@ Publicar resultados y proyecciones en un tablero público actualizado durante el
 - Dashboard público durante la jornada electoral.
 - Documentación metodológica y de datos.
 
-*Trabajo de Rodrigo Quiroga y Roberto Etchenique.*
+**Autores:** Rodrigo Quiroga y Roberto Etchenique
 
 ---
 
