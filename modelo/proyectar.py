@@ -2,22 +2,27 @@
 """
 modelo/proyectar.py — Motor de proyección en vivo (Seccionales Ecuador 2026).
 
-Toma una **instantánea** (mesas ya escrutadas, tidy) y la **referencia 2023 por
-familia** a nivel parroquia, proyecta los votos que faltan y agrega a territorio
-(provincia para prefecto, cantón para alcalde). Emite el bloque de datos del dashboard
-(`docs/DASHBOARD.md`).
+Toma una **instantánea** (mesas ya escrutadas, tidy) y la **referencia por familia**,
+proyecta los votos que faltan y agrega a territorio (provincia para prefecto, cantón
+para alcalde). Emite el bloque de datos del dashboard (`docs/DASHBOARD.md`).
+
+**Unidad fina** (`nivel`): `recinto` (zona; más fino y estable que la junta/mesa) o
+`parroquia`. El recinto exige el dump por mesa de la referencia (2023 y 2026); si no
+existe (2019/2021/2025, que solo tienen `.sav` parroquia×sexo) `nivel_efectivo` baja a
+`parroquia` automáticamente.
 
 Métodos:
-  * `v1`        — relleno jerárquico espacial (parroquia → cantón → provincia → nación),
+  * `v1`        — relleno jerárquico espacial (unidad → cantón → provincia → nación),
                   sin mapear alianzas entre años. Método principal en lo local.
-  * `jerarquico`— logit-swing jerárquico (`proyeccion.Proyector`) sobre familias.
+  * `jerarquico`— logit-swing jerárquico (`proyeccion.Proyector`) sobre familias, con
+                  jerarquía nacional → provincia → cantón → parroquia.
 
 Los **bloques** son FAMILIAS (`datos.familias`), no candidatos.
 
 Uso:
     from modelo import proyectar
-    ref = proyectar.referencia_familias("prefecto", 2023)
-    bloque = proyectar.construir("prefecto", snapshot, ref, metodo="v1")
+    ref = proyectar.referencia_familias("prefecto", 2023, nivel="recinto")
+    bloque = proyectar.construir("prefecto", snapshot, ref, metodo="v1", nivel="recinto")
     proyectar.emitir({"prefecto": snap_p, "alcalde": snap_a})
 """
 
@@ -34,15 +39,63 @@ from modelo import v1_brasil
 
 TERRITORIO = {"prefecto": "provincia", "alcalde": "canton"}
 
+# Nivel de la unidad fina del modelo: "recinto" (zona) o "parroquia".
+# El recinto (zona) es más fino y estable que la junta/mesa: en 2023 hay 2.930
+# recintos (mediana ~560 votos) frente a 40.058 mesas (~145 votos) y 1.227
+# parroquias (~2.165). Solo existe en los dumps por mesa (2023 y 2026); los
+# `.sav` del CNE de 2019/2021/2025 son parroquia×sexo → ahí usar "parroquia".
+NIVEL = "recinto"
+
 
 # ---------------------------------------------------------------------------
-def _loc3(lista):
+def _unidad(lista, nivel=None):
+    """loc_id/mesa_id -> clave de la unidad fina (recinto/zona o parroquia)."""
+    nivel = nivel or NIVEL
     p = lista.astype(str).str.split("-")
-    return p.str[0] + "-" + p.str[1] + "-" + p.str[3]
+    parroquia = p.str[0] + "-" + p.str[1] + "-" + p.str[3]
+    if nivel == "recinto":
+        return parroquia + "-" + p.str[4]
+    return parroquia
 
 
-def referencia_familias(dignidad, anio=2023):
-    """Matriz parroquia (loc_id 3-part) × familia con los votos de referencia."""
+def _loc3(lista):
+    return _unidad(lista, "parroquia")
+
+
+def nivel_efectivo(nivel=None, anio=2023, dignidad="prefecto"):
+    """Baja 'recinto' a 'parroquia' si no hay dump por mesa del año de referencia.
+
+    2019/2021/2025 solo tienen `.sav` parroquia×sexo → recinto imposible; en esos
+    casos el modelo (referencia y observado) debe correr a parroquia para que las
+    dos matrices compartan unidad.
+    """
+    nivel = nivel or NIVEL
+    if nivel != "recinto":
+        return "parroquia"
+    return ("recinto"
+            if os.path.exists(rd.ruta(f"mesas/votos_{dignidad}_{anio}.csv.gz"))
+            else "parroquia")
+
+
+def referencia_familias(dignidad, anio=2023, nivel=None):
+    """Matriz unidad × familia con los votos de referencia.
+
+    nivel="parroquia" usa el agregado `parr_partido_*`; nivel="recinto" (zona)
+    exige el dump por mesa (`votos_*`), disponible para 2023 y 2026 pero **no**
+    para 2019/2021/2025 (sus `.sav` son parroquia×sexo).
+    """
+    nivel = nivel or NIVEL
+    if nivel == "recinto":
+        p = rd.ruta(f"mesas/votos_{dignidad}_{anio}.csv.gz")
+        if not os.path.exists(p):
+            raise FileNotFoundError(
+                f"{p}: no hay dump por mesa para {dignidad} {anio}; el nivel "
+                f"'recinto' solo está disponible para 2023 y 2026")
+        v = pd.read_csv(p, dtype=str, usecols=["loc_id", "lista", "votos"])
+        v["votos"] = pd.to_numeric(v["votos"], errors="coerce").fillna(0).astype(int)
+        v["unidad"] = _unidad(v["loc_id"], nivel)
+        v["familia"] = v["lista"].map(lambda x: _familia(x))
+        return v.groupby(["unidad", "familia"])["votos"].sum().unstack(fill_value=0)
     p = rd.ruta(f"mesas/parr_partido_{dignidad}_{anio}.csv.gz")
     if not os.path.exists(p):
         raise FileNotFoundError(p)
@@ -52,18 +105,17 @@ def referencia_familias(dignidad, anio=2023):
     return v.groupby(["loc_id", "familia"])["votos"].sum().unstack(fill_value=0)
 
 
-def observado_familias(snapshot):
-    """Matriz parroquia × familia de lo ya escrutado (desde una instantánea tidy)."""
+def observado_familias(snapshot, nivel=None):
+    """Matriz unidad × familia de lo ya escrutado (desde una instantánea tidy)."""
+    nivel = nivel or NIVEL
     v = snapshot["votos"].copy()
     if v.empty:
         return pd.DataFrame()
-    if "loc_id" in v.columns:
-        v["loc3"] = _loc3(v["loc_id"])
-    else:
-        v["loc3"] = _loc3(v["mesa_id"])
+    base = v["loc_id"] if "loc_id" in v.columns else v["mesa_id"]
+    v["unidad"] = _unidad(base, nivel)
     if "familia" not in v.columns:
         v["familia"] = v["lista"].map(lambda x: _familia(x))
-    return v.groupby(["loc3", "familia"])["votos"].sum().unstack(fill_value=0)
+    return v.groupby(["unidad", "familia"])["votos"].sum().unstack(fill_value=0)
 
 
 def _nombres(dignidad):
@@ -87,8 +139,23 @@ def _terr_of(loc3, dignidad):
 
 
 # ---------------------------------------------------------------------------
-def _proyectar_parroquia(obs_fam, ref_fam, dignidad, metodo, ref_val_base):
+def _jerarquia(unidades, nivel=None):
+    """Jerarquía geográfica por unidad: (nacional, provincia, cantón, parroquia).
+
+    Las claves de unidad son `prov-cant-parroquia` (parroquia) o
+    `prov-cant-parroquia-zona` (recinto/zona). En el recinto, la parroquia es el
+    prefijo sin el campo zona. El encogimiento del `Proyector` va de lo fino a lo
+    grueso; el efecto propio de la unidad se maneja con `k_own` (fracción contada).
+    """
+    nivel = nivel or NIVEL
+    if nivel == "recinto":
+        return {k: ("EC", k[:2], k[:6], k[:11]) for k in unidades}
+    return {k: ("EC", k[:2], k[:6], k) for k in unidades}
+
+
+def _proyectar_unidades(obs_fam, ref_fam, dignidad, metodo, nivel=None):
     """Devuelve (proy [U,K], obs [U,K], val_base [U], unidades, familias)."""
+    nivel = nivel or NIVEL
     unidades = sorted(set(ref_fam.index) | set(obs_fam.index))
     familias = sorted(set(ref_fam.columns) | set(obs_fam.columns))
     ref = ref_fam.reindex(index=unidades, columns=familias, fill_value=0)
@@ -99,7 +166,7 @@ def _proyectar_parroquia(obs_fam, ref_fam, dignidad, metodo, ref_val_base):
     if metodo == "jerarquico":
         try:
             from proyeccion import Proyector
-            jer = {k: (k[:2], k[:6], k, k) for k in unidades}
+            jer = _jerarquia(unidades, nivel)
             modelo = Proyector(unidades, jer, ref.values.astype(float),
                                np.maximum(ref.values.sum(axis=1), 1.0))
             counted = O.sum(1) > 0
@@ -134,14 +201,14 @@ def _candidatos(cols, proy, crude):
     return out
 
 
-def construir(dignidad, snapshot, ref_fam, metodo="v1", serie=None):
+def construir(dignidad, snapshot, ref_fam, metodo="v1", serie=None, nivel=None):
     """Bloque de datos de una dignidad para el dashboard."""
-    obs_fam = observado_familias(snapshot)
+    obs_fam = observado_familias(snapshot, nivel)
     if obs_fam.empty:
         return {"nacional": {"escrutado": 0.0, "candidatos": []}, "territorios": [],
                 "serie": []}
-    proy, O, val_base, unidades, familias = _proyectar_parroquia(
-        obs_fam, ref_fam, dignidad, metodo, None)
+    proy, O, val_base, unidades, familias = _proyectar_unidades(
+        obs_fam, ref_fam, dignidad, metodo, nivel)
     if proy is None:
         proy = _v1(O, val_base, unidades, dignidad)
 
@@ -206,25 +273,28 @@ def construir(dignidad, snapshot, ref_fam, metodo="v1", serie=None):
 # ---------------------------------------------------------------------------
 def emitir(dignidades_snap, refs=None, metodo="v1", destino=None, series=None,
            eleccion="Seccionales Ecuador 2026", anio=None, referencia=None,
-           simulado=False, orden=None):
+           simulado=False, orden=None, nivel=None):
     """dignidades_snap: {dignidad: snapshot}. Escribe datos_web.json (contrato web)."""
     refs = refs or {}
+    niv = nivel_efectivo(nivel, referencia or 2023, "prefecto")
     doc = {
         "actualizado": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S"),
         "eleccion": eleccion,
         "anio": anio,
         "referencia": referencia,      # elección base del swing/relleno (misma dignidad)
+        "nivel": niv,                  # unidad fina del modelo (recinto | parroquia)
         "orden_carga": orden,          # orden de carga simulado (p.ej. prioridad2021)
         "simulado": bool(simulado),
         "metodo_principal": metodo,
         "escrutado_pct": None,
     }
     for dig, snap in dignidades_snap.items():
+        nj = nivel_efectivo(nivel, referencia or 2023, dig)
         ref = refs.get(dig)
         if ref is None:
-            ref = referencia_familias(dig, referencia or 2023)
+            ref = referencia_familias(dig, referencia or 2023, nj)
         ser = (series or {}).get(dig)
-        doc[dig] = construir(dig, snap, ref, metodo=metodo, serie=ser)
+        doc[dig] = construir(dig, snap, ref, metodo=metodo, serie=ser, nivel=nj)
     if "prefecto" in doc:
         doc["escrutado_pct"] = doc["prefecto"]["nacional"]["escrutado"]
     p = destino or os.path.join(rd.REPO, "web", "datos_web.json")
@@ -236,7 +306,7 @@ def emitir(dignidades_snap, refs=None, metodo="v1", destino=None, series=None,
 
 
 def serie_nacional(dignidad, ref, orden, anio_base=2023, fracciones=None,
-                   metodo="v1"):
+                   metodo="v1", nivel=None):
     """Serie temporal (nacional) del % proyectado por familia, para el dashboard."""
     from vivo.instantaneas import cargar_base, instantanea
     base = cargar_base(dignidad, anio_base)
@@ -244,7 +314,7 @@ def serie_nacional(dignidad, ref, orden, anio_base=2023, fracciones=None,
     serie = []
     for fr in frs:
         snap = instantanea(base, orden, fr)
-        doc = construir(dignidad, snap, ref, metodo=metodo)
+        doc = construir(dignidad, snap, ref, metodo=metodo, nivel=nivel)
         serie.append({"t": f"{int(round(100 * fr))}%",
                       "candidatos": {c["familia"]: c["pct_proy"]
                                      for c in doc["nacional"]["candidatos"]}})
@@ -252,7 +322,8 @@ def serie_nacional(dignidad, ref, orden, anio_base=2023, fracciones=None,
 
 
 def demo(anio=2023, referencia=2019, fraccion=0.35, orden="aleatorio",
-         metodo="v1", con_serie=True, destino=None, eleccion=None, seed=7):
+         metodo="v1", con_serie=True, destino=None, eleccion=None, seed=7,
+         nivel=None):
     """Genera `datos_web.json` desde un **replay** (para probar el dashboard).
 
     Proyecta `anio` a partir del escrutinio parcial simulado, tomando `referencia`
@@ -261,19 +332,20 @@ def demo(anio=2023, referencia=2019, fraccion=0.35, orden="aleatorio",
     from vivo.instantaneas import cargar_base, instantanea, _orden
     import numpy as _np
     rng = _np.random.default_rng(seed)
+    niv = nivel_efectivo(nivel, referencia, "prefecto")
     snaps, refs, series, ordenes = {}, {}, {}, {}
     for dig in ["prefecto", "alcalde"]:
         base = cargar_base(dig, anio)
         ordenes[dig] = _orden(base["mesas"], orden, rng)
         snaps[dig] = instantanea(base, ordenes[dig], 1.0 if fraccion >= 1 else fraccion)
-        refs[dig] = referencia_familias(dig, referencia)
+        refs[dig] = referencia_familias(dig, referencia, niv)
     if con_serie:
         series["prefecto"] = serie_nacional("prefecto", refs["prefecto"],
                                             ordenes["prefecto"], anio_base=anio,
-                                            metodo=metodo)
+                                            metodo=metodo, nivel=niv)
     return emitir(snaps, refs, series=series, metodo=metodo,
                   eleccion=eleccion or f"Seccionales Ecuador {anio} (prueba)",
-                  anio=anio, referencia=referencia, simulado=True,
+                  anio=anio, referencia=referencia, simulado=True, nivel=niv,
                   destino=destino or os.path.join(rd.REPO, "web", "datos_web.json"))
 
 
@@ -285,12 +357,14 @@ def main():
     ap.add_argument("--fraccion", type=float, default=0.35)
     ap.add_argument("--orden", default="aleatorio")
     ap.add_argument("--metodo", default="v1")
+    ap.add_argument("--nivel", default=None, choices=[None, "recinto", "parroquia"])
     ap.add_argument("--sin-serie", action="store_true")
     ap.add_argument("--salida", default=None)
     ap.add_argument("--eleccion", default=None)
     a = ap.parse_args()
     demo(a.anio, a.referencia, a.fraccion, a.orden, a.metodo,
-         con_serie=not a.sin_serie, destino=a.salida, eleccion=a.eleccion)
+         con_serie=not a.sin_serie, destino=a.salida, eleccion=a.eleccion,
+         nivel=a.nivel)
 
 
 if __name__ == "__main__":

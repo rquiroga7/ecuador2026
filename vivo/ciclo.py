@@ -109,7 +109,7 @@ def _normalizar_archivos(archivos, dignidades):
 # ---------------------------------------------------------------------------
 def correr(fuente=None, anio=None, referencia=None, fraccion=None, orden=None,
            metodo=None, salida=None, publicar=None, ruta_azure="", workers=12,
-           forense=True):
+           forense=True, nivel=None):
     fuente = fuente or cfg.FUENTE
     anio = anio or cfg.ANIO_ELECCION
     referencia = referencia or cfg.ANIO_REFERENCIA
@@ -118,8 +118,12 @@ def correr(fuente=None, anio=None, referencia=None, fraccion=None, orden=None,
     metodo = metodo or cfg.METODO
     dig = cfg.DIGNIDADES
 
+    from modelo import proyectar
+    nivel = nivel or getattr(cfg, "NIVEL", "recinto")
+    nivel = proyectar.nivel_efectivo(nivel, referencia, "prefecto")
+
     print(f"[ciclo] eleccion={cfg.ELECCION} fuente={fuente} anio={anio} "
-          f"referencia={referencia} metodo={metodo}")
+          f"referencia={referencia} metodo={metodo} nivel={nivel}")
     if fuente == "replay":
         snaps = snapshots_replay(anio, fraccion, orden, dig)
     elif fuente == "azure":
@@ -129,15 +133,14 @@ def correr(fuente=None, anio=None, referencia=None, fraccion=None, orden=None,
     else:
         raise SystemExit(f"fuente desconocida: {fuente}")
 
-    from modelo import proyectar
-    refs = {d: proyectar.referencia_familias(d, referencia) for d in dig
+    refs = {d: proyectar.referencia_familias(d, referencia, nivel) for d in dig
             if d in snaps}
     destino = salida or os.path.join(rd.REPO, cfg.SALIDA_WEB)
     eleccion = cfg.ELECCION if anio == cfg.ANIO_ELECCION else \
         f"Seccionales Ecuador {anio} (prueba con referencia {referencia})"
     doc = proyectar.emitir(snaps, refs, metodo=metodo, eleccion=eleccion,
                            anio=anio, referencia=referencia, destino=destino,
-                           simulado=(fuente == "replay"),
+                           simulado=(fuente == "replay"), nivel=nivel,
                            orden=(orden if fuente == "replay" else None))
 
     if forense:
@@ -187,6 +190,7 @@ def main():
     ap.add_argument("--fraccion", type=float, default=None)
     ap.add_argument("--orden", default=None)
     ap.add_argument("--metodo", default=None)
+    ap.add_argument("--nivel", default=None, choices=[None, "recinto", "parroquia"])
     ap.add_argument("--salida", default=None)
     ap.add_argument("--ruta-azure", default="")
     ap.add_argument("--workers", type=int, default=12)
@@ -198,8 +202,10 @@ def main():
     a = ap.parse_args()
 
     while True:
-        correr(a.fuente, a.anio, a.referencia, a.fraccion, a.orden, a.metodo,
-               a.salida, a.ruta_azure, a.workers, forense=not a.sin_forense)
+        correr(fuente=a.fuente, anio=a.anio, referencia=a.referencia,
+               fraccion=a.fraccion, orden=a.orden, metodo=a.metodo,
+               nivel=a.nivel, salida=a.salida, ruta_azure=a.ruta_azure,
+               workers=a.workers, forense=not a.sin_forense)
         if a.publicar or cfg.PUBLICAR:
             publicar_web(a.salida)
         if not a.loop:

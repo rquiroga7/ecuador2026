@@ -44,9 +44,43 @@ NO_PARTIDO = {"LOCAL", "OTRO", "OTROS", "RESTO", ""}
 OTROS = "OTROS"
 
 
+def _unidad(loc_id, nivel="parroquia"):
+    """loc_id (4- o 6-part) -> clave de la unidad fina (parroquia o recinto/zona)."""
+    p = loc_id.astype(str).str.split("-")
+    parr = p.str[0] + "-" + p.str[1] + "-" + p.str[3]
+    if nivel == "recinto":
+        return parr + "-" + p.str[4]
+    return parr
+
+
 def _loc3_de4(s):
-    p = s.astype(str).str.split("-")
-    return p.str[0] + "-" + p.str[1] + "-" + p.str[3]
+    return _unidad(s, "parroquia")
+
+
+def _votos_familia(dignidad, anio, nivel="parroquia"):
+    """[unidad, familia, votos] de las seccionales.
+
+    nivel="parroquia" usa `parr_partido_*` (2019 y 2023). nivel="recinto" (zona)
+    exige el dump por mesa (`votos_*`), que **no existe para 2019** → solo válido
+    para pares donde ambos años tengan zona (p.ej. 2023→2026).
+    """
+    if nivel == "recinto":
+        p = rd.ruta(f"mesas/votos_{dignidad}_{anio}.csv.gz")
+        if not os.path.exists(p):
+            raise FileNotFoundError(
+                f"{p}: sin dump por mesa para {dignidad} {anio}; el nivel "
+                f"'recinto' solo está disponible para 2023 (y 2026 en vivo)")
+        v = pd.read_csv(p, dtype=str, usecols=["loc_id", "lista", "votos"])
+        v["votos"] = v["votos"].astype(int)
+        v["familia"] = v["lista"].map(familia)
+        v["unidad"] = _unidad(v["loc_id"], "recinto")
+    else:
+        v = pd.read_csv(rd.ruta(f"mesas/parr_partido_{dignidad}_{anio}.csv.gz"),
+                        dtype=str)
+        v["votos"] = v["votos"].astype(int)
+        v["familia"] = v["partido"].map(familia)
+        v["unidad"] = v["loc_id"]
+    return v[["unidad", "familia", "votos"]]
 
 
 def _sufragantes(dignidad, anio):
@@ -83,13 +117,11 @@ def _nov(anio):
     return (E.reindex(loc) - S.reindex(loc)).clip(lower=0)
 
 
-def _bloques(dignidad):
+def _bloques(dignidad, nivel="parroquia"):
     """Familias con participación ≥ MIN_SHARE en 2019 o 2023 (hasta MAX_BLOQUES)."""
     tot = {}
     for anio in (2019, 2023):
-        v = pd.read_csv(rd.ruta(f"mesas/parr_partido_{dignidad}_{anio}.csv.gz"), dtype=str)
-        v["votos"] = v["votos"].astype(int)
-        v["familia"] = v["partido"].map(familia)
+        v = _votos_familia(dignidad, anio, nivel)
         tot[anio] = v.groupby("familia")["votos"].sum()
     T = pd.DataFrame(tot).fillna(0)
     T["max"] = T.max(axis=1)
@@ -99,13 +131,13 @@ def _bloques(dignidad):
     return fams[:MAX_BLOQUES]
 
 
-def cargar(dignidad, anio, bloques, con_nov=True):
-    v = pd.read_csv(rd.ruta(f"mesas/parr_partido_{dignidad}_{anio}.csv.gz"), dtype=str)
-    v["votos"] = v["votos"].astype(int)
-    v["familia"] = v["partido"].map(familia)
+def cargar(dignidad, anio, bloques, con_nov=True, nivel="parroquia"):
+    v = _votos_familia(dignidad, anio, nivel)
     v["familia"] = v["familia"].where(v["familia"].isin(bloques), OTROS)
-    t = v.pivot_table(index="loc_id", columns="familia", values="votos",
+    t = v.pivot_table(index="unidad", columns="familia", values="votos",
                       aggfunc="sum", fill_value=0)
+    # "No voto" solo a nivel parroquia: el padrón del CNE no baja a recinto.
+    con_nov = con_nov and nivel == "parroquia"
     cols = bloques + [OTROS] + (["NOV"] if con_nov else [])
     if con_nov:
         nv = _nov(anio)
@@ -129,43 +161,50 @@ def heatmap(theta, origen, destino, titulo, path):
     plt.close(fig)
 
 
-def analizar(dignidad):
-    bloques = _bloques(dignidad)
-    con_nov = _nov(2019) is not None and _nov(2023) is not None
+def analizar(dignidad, nivel="parroquia"):
+    suf = "" if nivel == "parroquia" else f"_{nivel}"
+    bloques = _bloques(dignidad, nivel)
+    con_nov = nivel == "parroquia" and _nov(2019) is not None and _nov(2023) is not None
     origen = bloques + [OTROS] + (["NOV"] if con_nov else [])
     destino = origen[:]
-    t19 = cargar(dignidad, 2019, bloques, con_nov)
-    t23 = cargar(dignidad, 2023, bloques, con_nov)
+    t19 = cargar(dignidad, 2019, bloques, con_nov, nivel)
+    t23 = cargar(dignidad, 2023, bloques, con_nov, nivel)
     locs = sorted(set(t19.index) & set(t23.index))
     X = t19.reindex(index=locs, columns=origen).to_numpy(float)
     Y = t23.reindex(index=locs, columns=destino).to_numpy(float)
-    print(f"[EI {dignidad}] parroquias comunes={len(locs)} | bloques={origen} "
-          f"| NOV={'sí' if con_nov else 'no'}")
+    print(f"[EI {dignidad} · {nivel}] unidades comunes={len(locs)} | "
+          f"bloques={origen} | NOV={'sí' if con_nov else 'no'}")
     theta, lo, hi, nval = ajustar(X, Y)
 
     out = rd.ruta_dir("ei")
     pd.DataFrame(100 * theta, index=origen, columns=destino).round(1).to_csv(
-        os.path.join(out, f"transicion_local_{dignidad}_2019_2023.csv"))
+        os.path.join(out, f"transicion_local_{dignidad}_2019_2023{suf}.csv"))
     ic = pd.DataFrame(
         [{"origen": origen[i], "destino": destino[j],
           "media": round(100 * theta[i, j], 1), "p5": round(100 * lo[i, j], 1),
           "p95": round(100 * hi[i, j], 1)}
          for i in range(len(origen)) for j in range(len(destino))])
-    ic.to_csv(os.path.join(out, f"transicion_local_{dignidad}_2019_2023_ic.csv"),
+    ic.to_csv(os.path.join(out, f"transicion_local_{dignidad}_2019_2023{suf}_ic.csv"),
               index=False)
     heatmap(theta, origen, destino,
-            f"Transición de votos {dignidad} 2019 → 2023 (%)",
-            os.path.join(out, f"heatmap_local_{dignidad}_2019_2023.png"))
+            f"Transición de votos {dignidad} 2019 → 2023 (%) · {nivel}",
+            os.path.join(out, f"heatmap_local_{dignidad}_2019_2023{suf}.png"))
     print(pd.DataFrame(100 * theta, index=origen, columns=destino).round(1).to_string())
-    return {"dignidad": dignidad, "parroquias": int(nval), "bloques": origen,
-            "con_nov": con_nov, "theta_pct": (100 * theta).round(1).tolist()}
+    return {"dignidad": dignidad, "nivel": nivel, "unidades": int(nval),
+            "bloques": origen, "con_nov": con_nov,
+            "theta_pct": (100 * theta).round(1).tolist()}
 
 
 def main():
-    digs = [sys.argv[1]] if len(sys.argv) > 1 else ["prefecto", "alcalde"]
-    res = [analizar(d) for d in digs]
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    nivel = "parroquia"
+    if "--nivel" in sys.argv:
+        nivel = sys.argv[sys.argv.index("--nivel") + 1]
+    digs = args or ["prefecto", "alcalde"]
+    res = [analizar(d, nivel) for d in digs]
     out = rd.ruta_dir("ei")
-    with open(os.path.join(out, "resumen_ei_local_2019_2023.json"), "w",
+    suf = "" if nivel == "parroquia" else f"_{nivel}"
+    with open(os.path.join(out, f"resumen_ei_local_2019_2023{suf}.json"), "w",
               encoding="utf-8") as f:
         json.dump(res, f, ensure_ascii=False, indent=2)
     print(f"[OK] -> {out}")

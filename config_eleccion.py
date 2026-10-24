@@ -19,6 +19,10 @@ ANIO_REFERENCIA = 2023            # base del swing / relleno (misma dignidad)
 # --- Dignidades y método ---
 DIGNIDADES = ["prefecto", "alcalde"]
 METODO = "v1"                     # v1 (relleno jerárquico) | jerarquico (Schteingart)
+# Unidad fina del modelo: "recinto" (zona; más fino y estable que la junta) |
+# "parroquia". Recinto solo si el dump por mesa del año de referencia existe
+# (2023 sí; 2019/2021/2025 no → se baja a parroquia automáticamente).
+NIVEL = "recinto"
 
 # --- Fuente de datos ---
 FUENTE = "replay"                 # replay | azure | portal
@@ -35,8 +39,8 @@ PUBLICAR = False                  # True -> empuja a la rama de datos (PUBLISH_*
 def como_dict():
     return {
         "eleccion": ELECCION, "anio_eleccion": ANIO_ELECCION,
-        "anio_referencia": ANIO_REFERENCIA, "dignidades": DIGNIDADES,
-        "metodo": METODO, "fuente": FUENTE,
+        "anio_referencia": ANIO_REFERENCIA,         "dignidades": DIGNIDADES,
+        "metodo": METODO, "nivel": NIVEL, "fuente": FUENTE,
         "fraccion_replay": FRACCION_REPLAY, "orden_replay": ORDEN_REPLAY,
     }
 

@@ -257,6 +257,39 @@ def desde_cne_txt(ruta, dignidad="prefecto", anio=2026):
     return votos[COLS_VOTOS], tot[COLS_TOTALES]
 
 
+def desde_gaona(ruta, con_updated=True):
+    """Volcado estilo Gaona (junta × candidato, con `updated`) -> (votos, totales).
+
+    Vale tanto para la captura real de 2021 (`raw/gaona_2021_presidencia_junta.csv`)
+    como para la captura **2023 simulada** de `datos/simular_captura.py` (mismo
+    esquema). Conserva `updated` como columna extra (una por mesa) para poder
+    reconstruir el **orden de carga**.
+    """
+    d = pd.read_csv(ruta, dtype=str)
+
+    def z(c, n):
+        s = d[c].astype(str).str.strip().str.lstrip("0")
+        return s.where(s != "", "0").str.zfill(n)
+
+    d["loc_id"] = (z("cod_prov", 2) + "-" + z("cod_cant", 3) + "-"
+                   + z("circunscripcion", 1) + "-" + z("parroquia", 4) + "-"
+                   + z("recinto", 2) + "-" + z("junta", 3))
+    d["mesa_id"] = d["loc_id"] + "-" + d["junta_genero"].astype(str).str.upper()
+    d["cod_junta"] = d["acta_numero"].astype(str)
+    for c in ["votos", "total_sufragantes", "nulos", "blancos"]:
+        d[c] = pd.to_numeric(d[c], errors="coerce").fillna(0).astype(int)
+    votos = d.groupby(["mesa_id", "cod_candidato"], sort=False).agg(
+        votos=("votos", "sum"), lista=("cod_org_pol", "first"),
+        loc_id=("loc_id", "first"), cod_junta=("cod_junta", "first")).reset_index()
+    votos["familia"] = votos["lista"].map(_familia)
+    tot = d.groupby("mesa_id", sort=False).agg(
+        loc_id=("loc_id", "first"), cod_junta=("cod_junta", "first"),
+        votos_emitidos=("total_sufragantes", "max"), votos_b=("blancos", "max"),
+        votos_n=("nulos", "max"), updated=("updated", "first")).reset_index()
+    tot = tot[COLS_TOTALES + (["updated"] if con_updated else [])]
+    return votos[COLS_VOTOS], tot
+
+
 # ---------------------------------------------------------------------------
 # Persistencia y progreso
 # ---------------------------------------------------------------------------
