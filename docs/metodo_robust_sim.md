@@ -80,8 +80,9 @@ Para cada unidad no escrutada `i`:
 s[i,:] = λ · s_sw[i,:] + (1 − λ) · s_peer[i,:]      (normalizado y recortado a ≥0)
 ```
 
-- `λ` = peso de base+swing. Calibrado: **prefecto λ=0,75**, **alcalde λ=0,5**, **nacional
-  λ=0,75**. (`ks` casi no influye; usar `(2,4,8,16)`.)
+- `λ` = peso de base+swing. Calibrado (base 2019 corregida): **prefecto λ=0,65**,
+  **alcalde λ=0,5**, **presidencial/nacional λ=0,75**. (`ks` casi no influye; usar
+  `(2,4,8,16)`.)
 
 ## 6. Votos proyectados y agregación
 
@@ -127,8 +128,8 @@ proj[not counted] = validos_base · s
 - **Similitud** → maneja heterogeneidad (no asume homogeneidad geográfica).
 - **Ancla a la base** → conserva el patrón espacial de la referencia, clave para el ranking.
 - Backtest local 2019→2023 (4 bloques, error promedio provincial correísmo+derecha):
-  - prefecto λ=0,75: err 5,9/5,5/4,6 y **acc 95,7/95,7/100%** (10/15/20%).
-  - alcalde λ=0,5: err 4,9/3,8/3,2 y acc 82/83/86%.
+  - prefecto λ=0,65: err 4,6/4,2/3,6 y **acc 95,7/95,7/100%** (10/15/20%).
+  - alcalde λ=0,5: err 4,7/3,8/3,2 y acc 83/88/88%.
 - Validación **presidencial 2021→2023** (misma arena): error provincial ~2 pts (vs ~5,5 de v1)
   y acc 87–92%. Generaliza sin sobreajuste.
 
@@ -140,3 +141,6 @@ proj[not counted] = validos_base · s
 - La similitud depende de la calidad del share base; si el mapeo de partidos es imperfecto,
   los pares pueden elegirse mal.
 - La mediana pierde algo de eficiencia frente a la media en provincias grandes.
+- **Realineamiento de partidos**: la base 2019 usa solo la lista 5 (FCS/RC) como correísmo;
+  la 35 (Alianza PAIS-2019) se trata como "otros" porque en 2023 es MOVER (derecha) y su
+  votante no se transfiere a RC. Incluirla inflaba la base (caso Loja: 29,5% vs. 10,8% real).

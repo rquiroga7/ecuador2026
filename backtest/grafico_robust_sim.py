@@ -73,7 +73,10 @@ def main():
     # provincias top 9 por votos finales
     fprov = pshare(finv, keys, ci)
     prov_votes = pd.Series(finv.sum(1), index=keys).groupby([k[:2] for k in keys]).sum()
-    top9 = prov_votes.sort_values(ascending=False).head(9).index.tolist()
+    # 06 Chimborazo y 18 Tungurahua no tenían candidato correísta a prefecto en 2023
+    excluir = {"06", "18"}
+    rank = [p for p in prov_votes.sort_values(ascending=False).index if p not in excluir]
+    top9 = rank[:9]
 
     series = {m: {p: {"x": [], "y": []} for p in top9}
               for m in ("crudo", "v1", "hier", "robust_sim")}
@@ -88,7 +91,7 @@ def main():
         hier = r["final"] if r else obs
         v1 = v1_brasil.proyectar(obs, base_val, grupos)
         rs = hibrido_var(obs, basev, base_val, keys, clip=True, robust="median",
-                         peer="sim", lam=0.75, ks=(2, 4, 8, 16))
+                         peer="sim", lam=0.65, ks=(2, 4, 8, 16))
         met = {"crudo": obs, "v1": v1, "hier": hier, "robust_sim": rs}
         xv = 100 * float(zone_votes[orden[:n]].sum() / zone_votes.sum())
         for nm, M in met.items():
@@ -99,7 +102,8 @@ def main():
                     series[nm][p]["x"].append(xv); series[nm][p]["y"].append(float(v))
 
     col = {"crudo": "#7f7f7f", "v1": "#1f77b4", "hier": "#2ca02c", "robust_sim": "#d62728"}
-    lab = {"crudo": "crudo", "v1": "v1", "hier": "jerárquico", "robust_sim": "robust_sim"}
+    lab = {"crudo": "crudo", "v1": "v1", "hier": "jerárquico",
+           "robust_sim": "robust_sim (λ=0,65)"}
     fig, axes = plt.subplots(3, 3, figsize=(15, 12), sharex=True, sharey=True)
     for ax, p in zip(axes.ravel(), top9):
         for nm in ("crudo", "v1", "hier", "robust_sim"):

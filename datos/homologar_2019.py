@@ -31,11 +31,14 @@ from datos.familias import familia, normalizar_lista
 RAW = rd.ruta("raw")
 
 # --- año-específico: lista -> bloque (3 bloques + residual) ---
-CORRE = {2019: {"5", "35"}, 2023: {"5"}}
+# 2019: la 35 (Alianza PAIS) se excluye del correísmo: en 2023 la 35 es MOVER (derecha)
+# y su votante no se transfiere a RC, por lo que usarla como base inflaba el correísmo
+# (caso Loja: base 29,5% vs. real 10,8%). Se usa solo lista 5 (FCS/RC) como linaje correísta
+# y la 35 cae en "otros" (no se asigna a derecha).
+CORRE = {2019: {"5"}, 2023: {"5"}}
 IZQ = {2019: {"18", "12", "2", "17", "20"}, 2023: {"18", "12", "2", "17"}}
 DER = {2019: {"6", "21", "23", "7", "19", "51", "3", "8", "4", "75", "1"},
        2023: {"6", "21", "23", "7", "19", "3", "8", "4", "75", "1", "33", "25"}}
-# 2019: 35=Alianza PAIS (correísmo); 2023: 35=MOVER (derecha/centro)
 
 
 def _norm(s):
