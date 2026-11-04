@@ -27,6 +27,7 @@ PARAMS = {
     'k_uf': 4.0,
     'k_int': 6.0,
     'k_ime': 6.0,
+    'ks_niv': (2.0, 4.0, 6.0, 6.0),  # encogimiento por nivel (grueso→fino); N niveles
     'k_own': 0.15,      # confianza en el propio municipio parcialmente contado: f / (f + k_own)
     'k_comp': 20000.0,  # votos del bloque "resto" para confiar a medias en la composición de un grupo
     'k_turn': 5.0,      # ídem para la participación
@@ -70,8 +71,14 @@ class Proyector:
         self.V = np.maximum(V, 1.0)
         self.LS = logit(base_bloques / self.V[:, None])
         self.lv = np.log(np.maximum(V, 50.0))
-        self.niv = [_grupos([str(jer[k][l]) for k in self.keys]) for l in range(4)]
-        self.uf = np.array([str(jer[k][1]) for k in self.keys])
+        L = len(jer[self.keys[0]])
+        ks = list(self.p.get('ks_niv', (2.0, 4.0, 6.0, 6.0)))
+        if not ks:
+            ks = [4.0] * L
+        ks = (ks + [ks[-1]] * L)[:L]
+        self.ks = [float(x) for x in ks]
+        self.niv = [_grupos([str(jer[k][l]) for k in self.keys]) for l in range(L)]
+        self.uf = np.array([str(jer[k][1]) if L > 1 else "ZZ" for k in self.keys])
 
     def proyectar(self, obs_votos, obs_f, bloque_de, extra=None):
         """obs_votos: [U, K] votos válidos contados por candidato nuevo (0 donde no hay datos).
@@ -124,8 +131,8 @@ class Proyector:
             beta = np.linalg.solve(A, Xw.T @ y)
             yhat = X @ beta
             res = np.where(vis, y - yhat, 0.0)
-            for nombre, (g, ng) in zip(['k_reg', 'k_uf', 'k_int', 'k_ime'], self.niv):
-                e = _efecto(g, ng, res, w, p[nombre])
+            for (g, ng), kk in zip(self.niv, self.ks):
+                e = _efecto(g, ng, res, w, kk)
                 yhat = yhat + e[g]
                 res = np.where(vis, res - e[g], 0.0)
             own = f / (f + p['k_own'])

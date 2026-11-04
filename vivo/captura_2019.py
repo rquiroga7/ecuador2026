@@ -129,14 +129,25 @@ def enumerar(page, force=False, max_prov=None):
         # recargar por provincia (evita cuelgues de sesión larga)
         _pasar(page)
         _set(page, "comboDignidad", "2", wait=3000)
-        _set(page, "comboPro", pro, wait=2500)
+        _set(page, "comboPro", pro, wait=3000)
         cants = _opts_page(page, "comboCanton")
+        if not cants:                      # reintento (provincias lentas)
+            _set(page, "comboPro", pro, wait=5500)
+            cants = _opts_page(page, "comboCanton")
         zprov = []
         for cant, cn in cants:
-            _set(page, "comboCanton", cant)
-            for parr, prn in _opts_page(page, "comboParro"):
-                _set(page, "comboParro", parr)
-                for zona, zn in _opts_page(page, "comboZona"):
+            _set(page, "comboCanton", cant, wait=2500)
+            parrs = _opts_page(page, "comboParro")
+            if not parrs:
+                _set(page, "comboCanton", cant, wait=4500)
+                parrs = _opts_page(page, "comboParro")
+            for parr, prn in parrs:
+                _set(page, "comboParro", parr, wait=2500)
+                zonas_ = _opts_page(page, "comboZona")
+                if not zonas_:
+                    _set(page, "comboParro", parr, wait=4500)
+                    zonas_ = _opts_page(page, "comboZona")
+                for zona, zn in zonas_:
                     _set(page, "comboZona", zona)
                     juntas = _opts_page(page, "comboJunta")
                     zprov.append({"prov": pro, "cant": cant, "parr": parr,
