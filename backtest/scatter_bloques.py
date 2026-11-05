@@ -30,6 +30,9 @@ from backtest import validar_recintos_bloques as V
 
 BL = ["correista", "anticorreista", "diferentes"]
 COL = {"correista": "#1f77b4", "anticorreista": "#d62728", "diferentes": "#2ca02c"}
+BL4 = ["correismo", "derecha", "izquierda", "otros"]
+COL4 = {"correismo": "#1f77b4", "derecha": "#d62728",
+        "izquierda": "#2ca02c", "otros": "#9467bd"}
 RESALTAR = "09-125-1435-01"
 
 
@@ -248,8 +251,186 @@ def _votos23():
     return _CACHE["v"]
 
 
+def _z(s, n):
+    s = pd.to_numeric(s, errors="coerce").astype("Int64").astype(str)
+    return s.str.zfill(n)
+
+
+def recintos_4b(anio):
+    """Recintos (prov-cant-parr-recinto) con shares del esquema de 4 bloques."""
+    from datos.homologar_2019 import bloque, aplicar_overrides
+    if anio == 2019:
+        from datos.homologar_2019 import mapa_lista_2019
+        p = rd.ruta("gaona_format/gaona_2019_seccional_d11_prefecto_junta.csv")
+        d = pd.read_csv(p, dtype=str, usecols=["cod_prov", "cod_cant", "parroquia",
+                                               "recinto", "cod_org_pol", "votos"])
+        d["lista"] = d["cod_org_pol"].map(mapa_lista_2019())
+    else:
+        from datos.familias import normalizar_lista
+        p = rd.ruta("gaona_format/gaona_2023_seccional_d11_prefecto_junta.csv")
+        d = pd.read_csv(p, dtype=str, usecols=["cod_prov", "cod_cant", "parroquia",
+                                               "recinto", "cod_org_pol", "votos"])
+        d["lista"] = d["cod_org_pol"].map(normalizar_lista)
+    d["votos"] = pd.to_numeric(d["votos"], errors="coerce").fillna(0).astype(int)
+    d["rec"] = (_z(d["cod_prov"], 2) + "-" + _z(d["cod_cant"], 3) + "-"
+                + _z(d["parroquia"], 4) + "-" + _z(d["recinto"], 2))
+    d["bloque"] = d["lista"].map(lambda x: bloque(x, anio, "4bloques"))
+    d["bloque"] = aplicar_overrides(d["bloque"], d, anio, "4bloques")
+    t = d.pivot_table(index="rec", columns="bloque", values="votos",
+                      aggfunc="sum", fill_value=0)
+    t = t.reindex(columns=BL4, fill_value=0)
+    t["total"] = t.sum(1)
+    tot = t[BL4].sum(1).replace(0, np.nan)
+    for b in BL4:
+        t[b + "_sh"] = 100 * t[b] / tot
+    return t
+
+
+def datos_4b():
+    a = recintos_4b(2019)
+    b = recintos_4b(2023)
+    com = a.index.intersection(b.index)
+    return a.loc[com], b.loc[com]
+
+
+def scatter_4(out=None, resaltar=RESALTAR, min_votos=100):
+    """Scatter de 4 facetas (esquema de 4 bloques) · 2019 vs 2023 (prefecto)."""
+    from matplotlib.lines import Line2D
+    A, B = datos_4b()
+    prov = A.index.str.slice(0, 2)
+    tot = np.minimum(A["total"], B["total"]).astype(float)
+    keep = (tot >= min_votos).values
+    provs = sorted(pd.unique(prov[keep]))
+    nom = _prov_nombres()
+    cmap = plt.get_cmap("tab20")
+    palette = {p: cmap(i % 20) for i, p in enumerate(provs)}
+    colarr = [palette[p] for p in prov[keep]]
+    s = 6 + 300 * (tot[keep].values / max(tot[keep].max(), 1))
+    pos_res = A.index.get_indexer([resaltar])[0] if resaltar in A.index else -1
+
+    fig, axes = plt.subplots(1, 4, figsize=(20, 5.4))
+    for ax, b in zip(axes, BL4):
+        x = B[b + "_sh"][keep].values
+        y = A[b + "_sh"][keep].values
+        ax.scatter(x, y, s=s, c=colarr, alpha=0.6, edgecolor="none")
+        ax.plot([0, 100], [0, 100], "k--", lw=0.8)
+        r = float(np.corrcoef(x, y)[0, 1])
+        ax.set_title(f"{b}  (r={r:.3f}, n={int(keep.sum())})",
+                     color=COL4[b], fontweight="bold")
+        ax.set_xlabel("share 2023 (%)  ·  prefecto")
+        ax.set_ylabel("share 2019 (%)  ·  prefecto")
+        ax.set_xlim(-2, 102); ax.set_ylim(-2, 102)
+        ax.grid(alpha=0.2)
+        if pos_res >= 0 and keep[pos_res]:
+            ax.scatter([x[pos_res]], [y[pos_res]], s=90, facecolor="none",
+                       edgecolor="black", linewidth=1.6, zorder=5)
+    handles = [Line2D([], [], marker="o", linestyle="", markersize=7,
+                      markerfacecolor=palette[p], markeredgecolor="none",
+                      label=nom.get(p, p)) for p in provs]
+    fig.legend(handles=handles, loc="lower center", ncol=8, fontsize=8,
+               frameon=False, bbox_to_anchor=(0.5, -0.03))
+    fig.suptitle("Cuatro bloques por recinto · 2019 vs 2023 (prefecto)\n"
+                 f"puntos ≥ {min_votos} votos · tamaño ∝ votos · color = provincia",
+                 fontsize=12)
+    fig.tight_layout(rect=[0, 0.07, 1, 0.93])
+    p = out or os.path.join(rd.ruta_dir("backtest"), "scatter_4bloques_2019_2023.png")
+    fig.savefig(p, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    print("[OK]", p, f"({int(keep.sum())} recintos >= {min_votos} votos)")
+    return p
+
+
+def scatter_4_html(out=None, resaltar=RESALTAR, min_votos=100):
+    """Versión interactiva (Plotly) del scatter de 4 bloques 2019→2023, con tooltip."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    from plotly.colors import qualitative
+
+    A, B = datos_4b()
+    prov = A.index.str.slice(0, 2)
+    tot = np.minimum(A["total"], B["total"]).astype(float)
+    keep = (tot >= min_votos).values
+    nom = _prov_nombres()
+
+    W = pd.DataFrame({"rec": A.index[keep], "prov": prov[keep],
+                      "tot19": A["total"].values[keep], "tot23": B["total"].values[keep]})
+    for b in BL4:
+        W[b + "_19"] = A[b + "_sh"].values[keep]
+        W[b + "_23"] = B[b + "_sh"].values[keep]
+    W["prov_name"] = W["prov"].map(nom).fillna(W["prov"])
+
+    cd = np.column_stack([
+        W["rec"].values, W["prov_name"].values, W["tot19"].values, W["tot23"].values,
+        W["correismo_19"].values, W["correismo_23"].values,
+        W["derecha_19"].values, W["derecha_23"].values,
+        W["izquierda_19"].values, W["izquierda_23"].values,
+        W["otros_19"].values, W["otros_23"].values])
+    hovert = ("<b>%{customdata[0]}</b> · %{customdata[1]}<br>"
+              "Votos 2019: %{customdata[2]:,.0f} · 2023: %{customdata[3]:,.0f}<br>"
+              "Correísmo: %{customdata[4]:.1f}% → %{customdata[5]:.1f}%<br>"
+              "Derecha: %{customdata[6]:.1f}% → %{customdata[7]:.1f}%<br>"
+              "Izquierda: %{customdata[8]:.1f}% → %{customdata[9]:.1f}%<br>"
+              "Otros: %{customdata[10]:.1f}% → %{customdata[11]:.1f}%"
+              "<extra></extra>")
+
+    provs = sorted(W["prov"].unique())
+    pal = qualitative.Alphabet
+    color = {p: pal[i % len(pal)] for i, p in enumerate(provs)}
+    size = (5 + 14 * np.sqrt(W["tot23"] / max(W["tot23"].max(), 1))).values
+
+    rs = {b: float(np.corrcoef(A[b + "_sh"].values[keep], B[b + "_sh"].values[keep])[0, 1])
+          for b in BL4}
+    fig = make_subplots(rows=1, cols=4, horizontal_spacing=0.035,
+                        subplot_titles=[f"{b} (r={rs[b]:.3f})" for b in BL4])
+    for c, b in enumerate(BL4, start=1):
+        x = W[b + "_23"].values; y = W[b + "_19"].values
+        for p in provs:
+            m = (W["prov"].values == p)
+            fig.add_trace(go.Scattergl(
+                x=x[m], y=y[m], mode="markers", name=nom.get(p, p),
+                legendgroup=p, showlegend=(c == 1),
+                marker=dict(color=color[p], size=size[m], opacity=0.65,
+                            line=dict(width=0)),
+                customdata=cd[m], hovertemplate=hovert), row=1, col=c)
+        fig.add_trace(go.Scatter(x=[0, 100], y=[0, 100], mode="lines",
+                      line=dict(color="black", dash="dash", width=1),
+                      showlegend=False, hoverinfo="skip"), row=1, col=c)
+
+    if resaltar in set(W["rec"]):
+        mr = (W["rec"].values == resaltar)
+        for c, b in enumerate(BL4, start=1):
+            fig.add_trace(go.Scatter(
+                x=W[b + "_23"].values[mr], y=W[b + "_19"].values[mr], mode="markers",
+                marker=dict(size=15, color="rgba(0,0,0,0)",
+                            line=dict(color="black", width=2)),
+                showlegend=False, hoverinfo="skip"), row=1, col=c)
+
+    fig.update_layout(
+        title=dict(text="Cuatro bloques por recinto · 2019 vs 2023 (prefecto)<br>"
+                        f"<sup>puntos ≥ {min_votos} votos · tamaño ∝ votos · "
+                        "color = provincia · hover para detalle</sup>", x=0.5),
+        template="plotly_white", height=680, width=1950,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.22, x=0.5,
+                    xanchor="center", font=dict(size=9)),
+        hovermode="closest", margin=dict(l=45, r=20, t=95, b=90))
+    for c in range(1, 5):
+        fig.update_xaxes(title_text="share 2023 (%)", range=[-2, 102], row=1, col=c)
+        fig.update_yaxes(title_text=("share 2019 (%)" if c == 1 else None),
+                         range=[-2, 102], row=1, col=c)
+    for c in range(2, 5):
+        fig.update_xaxes(matches="x", row=1, col=c)
+        fig.update_yaxes(matches="y", row=1, col=c)
+
+    p = out or os.path.join(rd.ruta_dir("backtest"), "scatter_4bloques_2019_2023.html")
+    fig.write_html(p, include_plotlyjs=True, full_html=True)
+    print("[OK]", p, f"({int(keep.sum())} recintos)")
+    return p
+
+
 def main():
     scatter()
+    scatter_4()
+    scatter_4_html()
     for b in BL:
         print(f"\n=== outliers {b} (extremos de delta) ===")
         print(outliers(b).to_string(index=False))

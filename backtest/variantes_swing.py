@@ -25,7 +25,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import rutas_datos as rd
 from datos.familias import normalizar_lista
-from datos.homologar_2019 import mapa_lista_2019, bloque
+from datos.homologar_2019 import mapa_lista_2019, bloque, aplicar_overrides
 from proyeccion import Proyector
 from modelo import swing, v1_brasil
 
@@ -69,7 +69,8 @@ def unidades(anio, dig, nivel, esquema):
     else:
         d["lista"] = d["cod_org_pol"].map(normalizar_lista)
     mp = {x: bloque(x, anio, esquema) for x in d["lista"].dropna().unique()}
-    d["bl"] = d["lista"].map(mp).fillna("LOCAL" if esquema == "familias" else "residual")
+    bl = d["lista"].map(mp).fillna("LOCAL" if esquema == "familias" else "residual")
+    d["bl"] = aplicar_overrides(bl, d, anio, esquema)
     d["u"] = _unidad(d, nivel)
     g = d.pivot_table(index="u", columns="bl", values="votos", aggfunc="sum", fill_value=0)
     g = g.astype(float)

@@ -230,45 +230,43 @@ python -m backtest.estB_grid
 
 ## 12. Grilla de variaciones de est_B (4 bloques, error provincial)
 
-> **Nota**: esta grilla se calculó **antes** de excluir la lista 35-2019 del bloque correísmo.
-> Tras la corrección (ver §2 y §13), los valores absolutos cambian; la comparación relativa
-> `sim` / `robust_sim` se mantiene, pero la calibración vigente es la de §13.
+> **Actualización (base corregida)**: grilla re-ejecutada tras excluir la lista 35-2019 del
+> bloque correísmo (ver §2 y §13). Detalle: `D:\ecuador2026_data\backtest\estB_grid.csv`.
 
 Sobre `est_B` (mezcla base+swing / pares), grilla OFAT + interacciones (~34 variantes).
 Métrica: error promedio por provincia de correísmo+derecha; `acc2` por territorio; 10/15/20%.
-Detalle: `D:\ecuador2026_data\backtest\estB_grid.csv`.
 
-Ganador claro (prefecto y alcalde): **`sim`** = est_B con **pares por similitud** (clip on);
-equivale a `est_BCH`. El resto de dimensiones (nat, ks, logit, sizew, robust, clip solo) aportan
-poco o empeoran.
+En prefecto, **`robust_sim`** logra el **mayor acierto** (91/91/96) con error casi mínimo;
+`sim_lam25` baja algo más el error@15 pero con menor acierto. En alcalde, **`robust_sim`** es
+el mejor en error y acierto.
 
 | variante | pref err@10/15/20 | pref acc@10/15/20 | alc err@10/15/20 | alc acc@10/15/20 |
 |---|---|---|---|---|
-| base | 7,91/6,75/6,61 | 87/87/96 | 6,81/6,31/5,45 | 82/84/85 |
-| clip | 7,93/6,78/6,65 | 87/87/96 | 6,76/6,33/5,54 | 82/84/85 |
-| **sim** | **4,86/4,16/3,40** | **91/91/96** | **4,73/3,81/3,09** | 83/81/84 |
-| sim_lam25 | 4,15/3,32/2,90 | 83/87/83 | 4,57/4,05/2,82 | 83/82/84 |
-| robust_sim | 4,89/4,29/3,47 | 91/91/96 | 4,77/3,78/3,19 | 83/83/86 |
-| nat_sim | 4,86/4,16/3,40 | 91/91/96 | 4,73/3,81/3,09 | 83/81/84 |
+| base | 7,03/5,94/5,71 | 83/91/87 | 6,85/6,23/5,42 | 84/85/86 |
+| clip | 7,04/5,94/5,73 | 83/91/87 | 6,77/6,13/5,46 | 85/85/86 |
+| **sim** | 4,51/3,84/2,79 | 83/87/87 | 4,59/4,04/3,00 | 85/88/89 |
+| sim_lam25 | 4,51/**3,58**/2,95 | 87/87/87 | **4,47**/4,15/2,95 | 85/87/89 |
+| **robust_sim** | **4,47**/3,87/2,79 | **91/91/96** | 4,51/3,90/**2,89** | 85/89/89 |
+| nat_sim | 4,52/3,84/2,79 | 83/87/87 | 4,59/4,04/3,00 | 85/88/89 |
 
 Lectura:
-- **`sim` reduce el error ~3 puntos** vs base y **sube el acierto** en prefecto (87→91%),
-  con alcalde similar; `robust_sim` es levemente mejor en acierto de alcalde.
-- `sim_lam25` baja más el error pero **empeora el acierto** en prefecto.
-- `clip` solo no cambia (no hubo shares negativas en 4 bloques); `nat`, `ks`, `logit`, `sizew`
-  no aportan.
-- Sobre la duda de la métrica: el "top-2 por dignidad" a nivel nacional es derecha+correísmo
-  (idéntico a la pareja fija); usar el top-2 por **provincia** no cambia la conclusión.
+- **`sim` reduce el error ~2–3 puntos** vs base y sube el acierto.
+- **`robust_sim`** da el mejor acierto en prefecto (91/91/96) y el mejor err+acc en alcalde.
+- `sim_lam25` baja algo más el error@15 pero empeora el acierto; `clip` solo no cambia;
+  `nat`/`ks` no aportan.
+- Sobre la métrica: el "top-2 por dignidad" nacional es derecha+correísmo (idéntico a la pareja
+  fija); el top-2 por provincia no cambia la conclusión.
 
-**Recomendación**: usar **`sim` (est_B + pares por similitud)** como modelo local principal;
-`robust_sim` si se prioriza acierto en alcalde. Validar en presidencial 2021→2023 antes de congelar.
+**Recomendación**: `robust_sim` **λ=0,5** como modelo local (prefecto y alcalde). Validación
+presidencial en §13.
 
 ## 13. Calibración de robust_sim y validación presidencial
 
-> **Corrección de homologación (2026-11)**: la lista 35 (Alianza PAIS-2019) se excluyó del
-> bloque correísmo (cae en "otros"). En 2023 la 35 es MOVER (derecha) y su votante no se
-> transfiere a RC; incluirla inflaba la base (Loja: base 29,5% vs. real 10,8%). Todos los
-> números de esta sección usan ya la base corregida.
+> **Correcciones de homologación (2026-11)**: la lista 35-2019 (AP) se movió a **izquierda**
+> (no correísmo); se agregaron a derecha las listas 33/88/82/63 (2019) y 35/100 (2023); y se
+> corrigieron alianzas/candidatos locales por provincia (Manabí 62, El Oro 100, Carchi 63,
+> Santa Elena 61/62, Chimborazo 100, Pastaza 61, Morona 62/6, Santo Domingo 20, Cañar 20).
+> Todos los números de esta sección usan la base corregida.
 
 Calibré λ y ks de `robust_sim` (median + sim + clip) en local 2019→2023, 4 bloques.
 `ks` casi no importa (diferencias <0,01); `λ` sí mueve acierto/error. Detalle local por
@@ -276,12 +274,12 @@ dignidad (err promedio provincial correísmo+derecha / acc, a 10/15/20%):
 
 | λ | prefecto err/acc | alcalde err/acc |
 |---|---|---|
-| 0,50 | 4,3/95,7 · 3,8/91,3 · 3,1/100 | 4,7/83,4 · 3,8/87,7 · 3,2/88,2 |
-| 0,65 | 4,6/95,7 · 4,2/95,7 · 3,6/100 | 5,0/83,4 · 4,2/87,7 · 3,6/87,7 |
-| 0,75 | 4,9/95,7 · 4,5/95,7 · 3,9/100 | 5,3/84,4 · 4,5/87,7 · 4,0/87,7 |
+| 0,35 | 4,5/91,3 · 3,7/91,3 · 2,5/91,3 | 4,5/84,8 · 3,9/87,7 · 2,9/89,6 |
+| 0,50 | 4,5/91,3 · 3,9/91,3 · 2,5/95,7 | 4,5/84,8 · 3,9/89,6 · 2,9/88,6 |
+| 0,65 | 4,6/87,0 · 4,2/95,7 · 2,6/91,3 | 4,8/85,8 · 4,0/88,6 · 3,2/88,2 |
 
-Agregado (media prefecto+alcalde): λ=0,65 → acc 0,918 / err 4,21; λ=0,75 → acc 0,918 /
-err 4,51; λ=0,50 → acc 0,910 / err 3,85.
+Agregado (media prefecto+alcalde): λ=0,50 → acc **0,901** / err 3,73; λ=0,35 → acc 0,892 /
+err 3,71; λ=0,65 → acc 0,894 / err 3,93.
 
 **Validación fuera de muestra — presidencial 2021→2023 (misma arena), zona, 2 bloques**
 (err provincial de cuota correísta / acc correísmo-vs-resto) — no depende de la corrección
@@ -297,14 +295,10 @@ err 4,51; λ=0,50 → acc 0,910 / err 3,85.
 **Conclusiones**
 - `robust_sim` **generaliza**: en presidencial baja el error a ~2 pts (vs ~5,5 de v1) con
   igual o mejor acierto. No hay sobreajuste al par local.
-- Tras corregir la base 2019, **λ=0,65 domina a 0,75** en local (mismo acierto, menor error);
-  en alcalde λ=0,5 sigue siendo el mejor (menor err y acc igual o mayor).
-- Recomendación: `robust_sim` con **λ=0,65 en prefecto** y **λ=0,5 en alcalde**;
-  presidencial/nacional λ=0,75. `ks=(2,4,8,16)`.
-- **Loja** (2019→2023): con la base corregida, la cuota de `robust_sim` baja de ~16,4% a
-  ~13,9% (λ=0,75) / ~13,3% (λ=0,5) frente a final 10,8%; el crudo (11,2%) sigue más cerca
-  porque las zonas contadas primero ya reflejan el nivel 2023. El residuo es geográfico/timing,
-  no de homologación.
+- Con la homologación corregida, **λ=0,50** es el mejor agregado (acc 0,901) y el más simple:
+  usarlo en **prefecto y alcalde**. `ks=(2,4,8,16)`.
+- Recomendación: `robust_sim` **λ=0,50** en local; presidencial/nacional λ=0,75 (validación
+  2021→2023).
 
 Scripts: `backtest/robust_sim_tune.py`, `backtest/validar_presidencial.py`,
 `backtest/grafico_robust_sim.py`.

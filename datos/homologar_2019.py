@@ -36,9 +36,9 @@ RAW = rd.ruta("raw")
 # (caso Loja: base 29,5% vs. real 10,8%). Se usa solo lista 5 (FCS/RC) como linaje correísta
 # y la 35 cae en "otros" (no se asigna a derecha).
 CORRE = {2019: {"5"}, 2023: {"5"}}
-IZQ = {2019: {"18", "12", "2", "17", "20"}, 2023: {"18", "12", "2", "17"}}
-DER = {2019: {"6", "21", "23", "7", "19", "51", "3", "8", "4", "75", "1"},
-       2023: {"6", "21", "23", "7", "19", "3", "8", "4", "75", "1", "33", "25"}}
+IZQ = {2019: {"18", "12", "2", "17", "20", "35"}, 2023: {"18", "12", "2", "17"}}
+DER = {2019: {"6", "21", "23", "7", "19", "51", "3", "8", "4", "75", "1", "88", "82", "63", "33"},
+       2023: {"6", "21", "23", "7", "19", "3", "8", "4", "75", "1", "33", "25", "35", "100"}}
 
 
 def _norm(s):
@@ -90,6 +90,39 @@ def mapa_lista_2019():
                 return lst
         return None
     return f
+
+
+# Overrides por provincia para listas locales que comparten número entre movimientos
+# distintos (la lista sola no alcanza: p. ej. 61 es Villao en Santa Elena y PSC en Pastaza).
+OVERRIDES = {
+    (2019, "24", "61"): "correismo",           # José Daniel Villao (Santa Elena) -> luego RC
+    (2019, "24", "62"): "derecha",             # Dionicio Gonzabay (Santa Elena)
+    (2019, "16", "61"): "derecha",             # Unidos por Pastaza + PSC
+    (2019, "14", "62"): "correismo",           # Roberto Villarreal (Morona; alianza con AP 35)
+    (2019, "14", "6"): "correismo",            # Celestino Wisum (Morona; luego RC en 2023)
+    (2019, "06", "100"): "derecha",            # Santiago Oviedo (Chimborazo; SUR)
+    (2019, "23", "20"): "correismo",           # Johana Núñez (Santo Domingo; luego RC 2023)
+    (2019, "03", "20"): "correismo",           # Marcelo Jaramillo (Cañar; luego RC 2023)
+    (2023, "16", "061021"): "derecha",         # Polo Lascano (Pastaza; alianza con CREO 21)
+    (2023, "13", "062065006023"): "derecha",   # Agustín Casanova (Manabí: 62-65-6-23)
+    (2023, "04", "063"): "derecha",            # Julio Robles (Carchi; mismo candidato PSC-2019)
+}
+
+
+def aplicar_overrides(bl, d, anio, esquema):
+    """Aplica los overrides provincia-lista (2019) o provincia-org (2023) a una Serie."""
+    if esquema != "4bloques":
+        return bl
+    prov = d["cod_prov"].astype(str).str.zfill(2)
+    for (a, p, key), blk in OVERRIDES.items():
+        if a != anio:
+            continue
+        if anio == 2019:
+            mask = (prov == p) & (d["lista"].astype(str) == key)
+        else:
+            mask = (prov == p) & (d["cod_org_pol"].astype(str) == key)
+        bl = bl.where(~mask, blk)
+    return bl
 
 
 def bloque(lista, anio, esquema):

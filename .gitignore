@@ -6,7 +6,7 @@ __pycache__/
 Claves_Azure_File_Storage*.txt
 *.sas
 .env
-Pref_y_Alc_2026.xlsx
+Pref_y_Alc_2026*
 
 # === DATOS CRUDOS / DERIVADOS ===
 # Viven en D:\ecuador2026_data (ver rutas_datos.py); no se versionan.

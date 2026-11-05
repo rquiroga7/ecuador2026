@@ -80,8 +80,8 @@ Para cada unidad no escrutada `i`:
 s[i,:] = λ · s_sw[i,:] + (1 − λ) · s_peer[i,:]      (normalizado y recortado a ≥0)
 ```
 
-- `λ` = peso de base+swing. Calibrado (base 2019 corregida): **prefecto λ=0,65**,
-  **alcalde λ=0,5**, **presidencial/nacional λ=0,75**. (`ks` casi no influye; usar
+- `λ` = peso de base+swing. Calibrado (homologación corregida): **λ=0,5 en local**
+  (prefecto y alcalde), **presidencial/nacional λ=0,75**. (`ks` casi no influye; usar
   `(2,4,8,16)`.)
 
 ## 6. Votos proyectados y agregación
@@ -128,8 +128,8 @@ proj[not counted] = validos_base · s
 - **Similitud** → maneja heterogeneidad (no asume homogeneidad geográfica).
 - **Ancla a la base** → conserva el patrón espacial de la referencia, clave para el ranking.
 - Backtest local 2019→2023 (4 bloques, error promedio provincial correísmo+derecha):
-  - prefecto λ=0,65: err 4,6/4,2/3,6 y **acc 95,7/95,7/100%** (10/15/20%).
-  - alcalde λ=0,5: err 4,7/3,8/3,2 y acc 83/88/88%.
+  - prefecto λ=0,50: err 4,5/3,9/2,5 y acc 91,3/91,3/95,7% (10/15/20%).
+  - alcalde λ=0,50: err 4,5/3,9/2,9 y acc 84,8/89,6/88,6%.
 - Validación **presidencial 2021→2023** (misma arena): error provincial ~2 pts (vs ~5,5 de v1)
   y acc 87–92%. Generaliza sin sobreajuste.
 
